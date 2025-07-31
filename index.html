@@ -151,6 +151,42 @@
           records = JSON.parse(download.body || '[]');
         }
         records.push(entry);
+        if (file) {
+          // Update content only using uploadType=media
+          const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=media`;
+          const res = await fetch(updateUrl, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(records)
+          });
+          if (!res.ok) throw await res.json();
+        } else {
+          // Create new file with metadata
+          const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
+          const createUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
+          const blob = new Blob([JSON.stringify(records)], { type: 'application/json' });
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          form.append('file', blob);
+          const res = await fetch(createUrl, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${accessToken}` },
+            body: form
+          });
+          if (!res.ok) throw await res.json();
+        }
+        listRecords();
+      } catch (err) {
+        console.error('Error saving record', err);
+        alert('Chyba při ukládání: ' + (err.error?.message || err.message));
+      }
+    });
+          records = JSON.parse(download.body || '[]');
+        }
+        records.push(entry);
         const blob = new Blob([JSON.stringify(records)], { type: 'application/json' });
         const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
         const form = new FormData();
