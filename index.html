@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
-  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
   <title>Moje váha</title>
+
   <!-- Content Security Policy -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self';
-    script-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4 https://accounts.google.com https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline';
+    script-src 'self' https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4 https://accounts.google.com https://apis.google.com https://www.gstatic.com 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
-    frame-src https://accounts.google.com https://accounts.google.com/gsi https://content.googleapis.com;
-    connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
+    frame-src https://accounts.google.com https://accounts.google.com/gsi;
+    connect-src https://www.googleapis.com https://www.gstatic.com;">
+
   <!-- Tailwind CSS via Browser CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
 </head>
@@ -50,16 +50,16 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- GAPI client for Drive -->
   <script src="https://apis.google.com/js/api.js" async defer></script>
+
   <script>
     // Konfigurace
-    const CLIENT_ID = '562922982244-e4ci4pc7pj3tche4dat3ra6oam17ath8.apps.googleusercontent.com';
+    const CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
     const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
     const FILE_NAME = 'weight_records.json';
 
     let tokenClient;
     let accessToken = null;
 
-    // Elementy
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const authSection = document.getElementById('auth-section');
@@ -69,17 +69,10 @@
     const dateInput = document.getElementById('date');
     const weightInput = document.getElementById('weight');
 
-    // Inicializace
     window.onload = () => {
       dateInput.valueAsDate = new Date();
       initGapi();
       initGis();
-      // handle redirect response
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.has('access_token')) {
-        accessToken = urlParams.get('access_token');
-        onSignIn();
-      }
     };
 
     function initGapi() {
@@ -94,21 +87,22 @@
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
-        ux_mode: 'redirect',
-        redirect_uri: window.location.origin + window.location.pathname,
+        ux_mode: 'popup',
         callback: (tokenResponse) => {
           if (tokenResponse.error) {
             console.error('Token error', tokenResponse);
             return;
           }
+          accessToken = tokenResponse.access_token;
+          onSignIn();
         }
       });
     }
 
-    // Přihlášení/odhlášení
     loginBtn.addEventListener('click', () => {
       if (!accessToken) tokenClient.requestAccessToken({ prompt: 'consent' });
     });
+
     logoutBtn.addEventListener('click', () => {
       if (accessToken) google.accounts.oauth2.revoke(accessToken);
       accessToken = null;
@@ -117,14 +111,12 @@
       historyList.innerHTML = '';
     });
 
-    // Po přihlášení
     function onSignIn() {
       authSection.classList.add('hidden');
       appSection.classList.remove('hidden');
       listRecords();
     }
 
-    // Základní CRUD
     async function getAppDataFile() {
       try {
         const res = await gapi.client.drive.files.list({
