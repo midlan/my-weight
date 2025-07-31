@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Moje váha</title>
   <!-- Content Security Policy -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://www.gstatic.com 'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; frame-src https://accounts.google.com; connect-src https://www.googleapis.com https://www.gstatic.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; frame-src https://accounts.google.com https://content.googleapis.com; connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
   <!-- Tailwind CSS -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css" rel="stylesheet">
 </head>
@@ -61,6 +61,7 @@
     const dateInput = document.getElementById('date');
     const weightInput = document.getElementById('weight');
 
+    // Přednastavit dnešní datum
     dateInput.valueAsDate = new Date();
 
     function gapiLoad() {
@@ -104,9 +105,7 @@
     }
 
     loginBtn.addEventListener('click', () => {
-      if (accessToken === null) {
-        tokenClient.requestAccessToken({prompt: 'consent'});
-      }
+      if (!accessToken) tokenClient.requestAccessToken({prompt: 'consent'});
     });
     logoutBtn.addEventListener('click', signOut);
 
@@ -135,7 +134,9 @@
       const form = new FormData();
       form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
       form.append('file', blob);
-      const url = file ? `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=multipart&fields=id` : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
+      const url = file
+        ? `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=multipart&fields=id`
+        : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
       await fetch(url, {method: file ? 'PATCH' : 'POST', headers: {Authorization: `Bearer ${accessToken}`}, body: form});
       listRecords();
     }
