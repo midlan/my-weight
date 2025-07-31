@@ -4,37 +4,33 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Moje váha</title>
-  <!-- Tailwind CSS via CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google API Client Library -->
-  <script src="https://apis.google.com/js/api.js"></script>
+  <!-- Content Security Policy for Google APIs -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://apis.google.com https://accounts.google.com https://www.gstatic.com 'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; frame-src https://accounts.google.com; connect-src https://www.googleapis.com https://www.gstatic.com;">
+  <!-- Tailwind CSS via CDN (production build) -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
   <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
     <h1 class="text-2xl font-bold mb-4 text-center">Moje váha</h1>
-    <!-- Auth Section -->
     <div id="auth-section" class="text-center">
       <button id="login-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
         Přihlásit přes Google
       </button>
     </div>
-    <!-- App Section -->
     <div id="app-section" class="hidden">
-      <div class="mb-4">
-        <form id="weight-form" class="space-y-2">
-          <div>
-            <label for="date" class="block text-sm font-medium">Datum</label>
-            <input type="date" id="date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" />
-          </div>
-          <div>
-            <label for="weight" class="block text-sm font-medium">Hmotnost (kg)</label>
-            <input type="number" step="0.1" id="weight" placeholder="72.5" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" />
-          </div>
-          <button type="submit" class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
-            Uložit
-          </button>
-        </form>
-      </div>
+      <form id="weight-form" class="space-y-4">
+        <div>
+          <label for="date" class="block text-sm font-medium">Datum</label>
+          <input type="date" id="date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <div>
+          <label for="weight" class="block text-sm font-medium">Hmotnost (kg)</label>
+          <input type="number" step="0.1" id="weight" placeholder="72.5" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" />
+        </div>
+        <button type="submit" class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
+          Uložit
+        </button>
+      </form>
       <hr class="my-4" />
       <h2 class="text-xl font-semibold mb-2">Historie</h2>
       <ul id="history-list" class="space-y-2 max-h-64 overflow-auto"></ul>
@@ -44,9 +40,11 @@
     </div>
   </div>
 
+  <!-- Google API Client Library -->
+  <script src="https://apis.google.com/js/api.js" async defer></script>
   <script>
+    /* Google OAuth2 a Drive AppData SPA */
     const CLIENT_ID = '562922982244-e4ci4pc7pj3tche4dat3ra6oam17ath8.apps.googleusercontent.com';
-    const API_KEY = ''; // není potřeba pro Drive AppData
     const DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'];
     const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
@@ -59,8 +57,8 @@
     const historyList = document.getElementById('history-list');
     const dateInput = document.getElementById('date');
     const weightInput = document.getElementById('weight');
-    
-    // Nastav dnešní datum
+
+    // Přednastavit dnešní datum
     dateInput.valueAsDate = new Date();
 
     function handleClientLoad() {
@@ -77,15 +75,15 @@
         GoogleAuth.isSignedIn.listen(updateSigninStatus);
         updateSigninStatus(GoogleAuth.isSignedIn.get());
 
-        loginBtn.onclick = () => GoogleAuth.signIn();
-        logoutBtn.onclick = () => GoogleAuth.signOut();
+        loginBtn.addEventListener('click', () => GoogleAuth.signIn());
+        logoutBtn.addEventListener('click', () => GoogleAuth.signOut());
 
         weightForm.addEventListener('submit', e => {
           e.preventDefault();
           saveRecord({ date: dateInput.value, weight: parseFloat(weightInput.value) });
           weightInput.value = '';
         });
-      });
+      }).catch(err => console.error('GAPI init error', err));
     }
 
     function updateSigninStatus(isSignedIn) {
@@ -100,75 +98,59 @@
       }
     }
 
-    // Layout file in appDataFolder: 'weight_records.json'
-    const RECORD_FILE_NAME = 'weight_records.json';
+    const FILE_NAME = 'weight_records.json';
 
     async function getAppDataFile() {
-      const response = await gapi.client.drive.files.list({
-        spaces: 'appDataFolder',
-        fields: 'files(id, name)',
-        q: `name='${RECORD_FILE_NAME}'`
+      const res = await gapi.client.drive.files.list({
+        spaces: 'appDataFolder', fields: 'files(id,name)',
+        q: `name='${FILE_NAME}'`
       });
-      return response.result.files[0] || null;
+      return res.result.files[0] || null;
     }
 
     async function saveRecord(entry) {
-      // načti existující data
-      let file = await getAppDataFile();
-      let records = [];
-      if (file) {
-        const download = await gapi.client.drive.files.get({
-          fileId: file.id,
-          alt: 'media'
-        });
-        records = download.body ? JSON.parse(download.body) : [];
+      try {
+        let file = await getAppDataFile();
+        let records = [];
+        if (file) {
+          const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
+          records = JSON.parse(download.body || '[]');
+        }
+        records.push(entry);
+        const blob = new Blob([JSON.stringify(records)], { type: 'application/json' });
+        const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        form.append('file', blob);
+        const token = GoogleAuth.currentUser.get().getAuthResponse().access_token;
+        const url = file
+          ? `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=multipart&fields=id`
+          : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
+        await fetch(url, { method: file ? 'PATCH' : 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
+        listRecords();
+      } catch (err) {
+        console.error('Save error', err);
       }
-      records.push(entry);
-      const blob = new Blob([JSON.stringify(records)], { type: 'application/json' });
-      const metadata = {
-        name: RECORD_FILE_NAME,
-        parents: ['appDataFolder']
-      };
-      let form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-      form.append('file', blob);
-      if (file) {
-        // update
-        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=multipart&fields=id`, {
-          method: 'PATCH',
-          headers: { 'Authorization': 'Bearer ' + GoogleAuth.currentUser.get().getAuthResponse().access_token },
-          body: form
-        });
-      } else {
-        // create
-        await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + GoogleAuth.currentUser.get().getAuthResponse().access_token },
-          body: form
-        });
-      }
-      listRecords();
     }
 
     async function listRecords() {
       historyList.innerHTML = '';
       const file = await getAppDataFile();
-      let records = [];
       if (file) {
         const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
-        records = JSON.parse(download.body);
+        const records = JSON.parse(download.body || '[]');
+        records.sort((a, b) => new Date(b.date) - new Date(a.date));
+        records.forEach(e => {
+          const li = document.createElement('li');
+          li.className = 'p-2 bg-gray-50 rounded flex justify-between';
+          li.textContent = `${e.date}: ${e.weight} kg`;
+          historyList.appendChild(li);
+        });
       }
-      records.sort((a, b) => new Date(b.date) - new Date(a.date));
-      records.forEach(e => {
-        const li = document.createElement('li');
-        li.className = 'p-2 bg-gray-50 rounded flex justify-between';
-        li.textContent = `${e.date}: ${e.weight} kg`;
-        historyList.appendChild(li);
-      });
     }
 
-    // načtení Google API
-    handleClientLoad();
+    // Spustit načtení GAPI
+    window.onload = handleClientLoad;
   </script>
 </body>
 </html>
