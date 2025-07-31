@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Moje váha</title>
   <!-- Content Security Policy -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; frame-src https://accounts.google.com https://content.googleapis.com; connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
-  <!-- Tailwind CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.2/dist/tailwind.min.css" rel="stylesheet">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4 https://accounts.google.com https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src https://accounts.google.com https://content.googleapis.com; connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
+  <!-- Tailwind CSS via Browser CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
   <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
