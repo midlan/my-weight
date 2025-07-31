@@ -83,16 +83,18 @@
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
+        ux_mode: 'redirect',
+        redirect_uri: window.location.origin + window.location.pathname,
         callback: (tokenResponse) => {
           if (tokenResponse.error) {
             console.error('Token error', tokenResponse);
             return;
           }
           accessToken = tokenResponse.access_token;
-          google.accounts.oauth2.disableAutoSelect();
           onSignIn();
         }
       });
+    }
     }
 
     function onSignIn() {
