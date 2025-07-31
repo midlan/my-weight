@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self';
     script-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4 https://accounts.google.com https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
-    frame-src https://accounts.google.com https://content.googleapis.com https://accounts.google.com/gsi https://content.googleapis.com; 
+    frame-src https://accounts.google.com https://accounts.google.com/gsi https://content.googleapis.com;
     connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
   <!-- Tailwind CSS via Browser CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
@@ -49,6 +49,7 @@
   <!-- GAPI client for Drive -->
   <script src="https://apis.google.com/js/api.js" async defer></script>
   <script>
+    // Konfigurace
     const CLIENT_ID = '562922982244-e4ci4pc7pj3tche4dat3ra6oam17ath8.apps.googleusercontent.com';
     const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
     const FILE_NAME = 'weight_records.json';
@@ -56,6 +57,7 @@
     let tokenClient;
     let accessToken = null;
 
+    // Elementy
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const authSection = document.getElementById('auth-section');
@@ -65,21 +67,23 @@
     const dateInput = document.getElementById('date');
     const weightInput = document.getElementById('weight');
 
-    // Přednastavit dnešní datum
-    dateInput.valueAsDate = new Date();
+    // Inicializace
+    window.onload = () => {
+      dateInput.valueAsDate = new Date();
+      initGapi();
+      initGis();
+    };
 
-    function gapiLoad() {
-      gapi.load('client', initializeGapiClient);
-    }
-
-    async function initializeGapiClient() {
-      await gapi.client.init({
-        apiKey: '',
-        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+    function initGapi() {
+      gapi.load('client', async () => {
+        await gapi.client.init({
+          apiKey: '',
+          discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+        });
       });
     }
 
-    function gisInit() {
+    function initGis() {
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
@@ -96,34 +100,34 @@
       });
     }
 
+    // Přihlášení/odhlášení
+    loginBtn.addEventListener('click', () => {
+      if (!accessToken) tokenClient.requestAccessToken({ prompt: 'consent' });
+    });
+    logoutBtn.addEventListener('click', () => {
+      if (accessToken) google.accounts.oauth2.revoke(accessToken);
+      accessToken = null;
+      authSection.classList.remove('hidden');
+      appSection.classList.add('hidden');
+      historyList.innerHTML = '';
+    });
+
+    // Po přihlášení
     function onSignIn() {
       authSection.classList.add('hidden');
       appSection.classList.remove('hidden');
       listRecords();
     }
 
-    function signOut() {
-      if (accessToken) {
-        google.accounts.oauth2.revoke(accessToken);
-        accessToken = null;
-      }
-      authSection.classList.remove('hidden');
-      appSection.classList.add('hidden');
-      historyList.innerHTML = '';
-    }
-
-    loginBtn.addEventListener('click', () => {
-      if (!accessToken) tokenClient.requestAccessToken({prompt: 'consent'});
-    });
-    logoutBtn.addEventListener('click', signOut);
-
+    // Uložení záznamu
     weightForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const entry = {date: dateInput.value, weight: parseFloat(weightInput.value)};
+      const entry = { date: dateInput.value, weight: parseFloat(weightInput.value) };
       await saveRecord(entry);
       weightInput.value = '';
     });
 
+    // Čtení a zápis souboru v appDataFolder
     async function getAppDataFile() {
       try {
         const res = await gapi.client.drive.files.list({
@@ -133,63 +137,39 @@
         });
         return res.result.files[0] || null;
       } catch (err) {
-        console.error('Error listing appDataFolder files', err);
-        return null; // treat as no file
+        console.error('Error listing files', err);
+        return null;
       }
-    }'`
-      });
-      return res.result.files[0] || null;
     }
 
     async function saveRecord(entry) {
       try {
-        let file = await getAppDataFile();
+        const file = await getAppDataFile();
         let records = [];
         if (file) {
-          const download = await gapi.client.drive.files.get({fileId: file.id, alt: 'media'});
+          const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
           records = JSON.parse(download.body || '[]');
         }
         records.push(entry);
-        const blob = new Blob([JSON.stringify(records)], {type: 'application/json'});
-        const metadata = {name: FILE_NAME, parents: ['appDataFolder']};
+        const blob = new Blob([JSON.stringify(records)], { type: 'application/json' });
+        const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
         const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         form.append('file', blob);
         const url = file
           ? `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=multipart&fields=id`
           : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
         const res = await fetch(url, {
           method: file ? 'PATCH' : 'POST',
-          headers: {Authorization: `Bearer ${accessToken}`},
+          headers: { Authorization: `Bearer ${accessToken}` },
           body: form
         });
-        if (!res.ok) {
-          const error = await res.json();
-          throw error;
-        }
+        if (!res.ok) throw await res.json();
         listRecords();
       } catch (err) {
         console.error('Error saving record', err);
-        alert('Chyba při ukládání záznamu: ' + (err.error?.message || err.message));
+        alert('Chyba při ukládání: ' + (err.error?.message || err.message));
       }
-    });
-        records = JSON.parse(download.body || '[]');
-      }
-      records.push(entry);
-      const blob = new Blob([JSON.stringify(records)], {type: 'application/json'});
-      const metadata = {name: FILE_NAME, parents: ['appDataFolder']};
-      const form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
-      form.append('file', blob);
-      const url = file
-        ? `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=multipart&fields=id`
-        : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
-      await fetch(url, {
-        method: file ? 'PATCH' : 'POST',
-        headers: {Authorization: `Bearer ${accessToken}`},
-        body: form
-      });
-      listRecords();
     }
 
     async function listRecords() {
@@ -203,35 +183,23 @@
           historyList.appendChild(li);
           return;
         }
-        const download = await gapi.client.drive.files.get({fileId: file.id, alt: 'media'});
+        const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
         const records = JSON.parse(download.body || '[]');
         records.sort((a, b) => new Date(b.date) - new Date(a.date));
-        for (const e of records) {
+        records.forEach(e => {
           const li = document.createElement('li');
           li.className = 'p-2 bg-gray-50 rounded flex justify-between';
           li.textContent = `${e.date}: ${e.weight} kg`;
           historyList.appendChild(li);
-        }
+        });
       } catch (err) {
         console.error('Error loading records', err);
         const li = document.createElement('li');
         li.className = 'p-2 text-red-600';
-        li.textContent = 'Chyba při načítání historie. Zkontroluj povolení API.';
+        li.textContent = 'Chyba při načítání historie.';
         historyList.appendChild(li);
       }
-    });
-        const records = JSON.parse(download.body || '[]');
-        records.sort((a, b) => new Date(b.date) - new Date(a.date));
-        for (const e of records) {
-          const li = document.createElement('li');
-          li.className = 'p-2 bg-gray-50 rounded flex justify-between';
-          li.textContent = `${e.date}: ${e.weight} kg`;
-          historyList.appendChild(li);
-        }
-      }
     }
-
-    window.onload = () => { gapiLoad(); gisInit(); };
   </script>
 </body>
 </html>
