@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
   <title>Moje váha</title>
   <!-- Content Security Policy -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self';
@@ -72,12 +74,17 @@
       dateInput.valueAsDate = new Date();
       initGapi();
       initGis();
+      // handle redirect response
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('access_token')) {
+        accessToken = urlParams.get('access_token');
+        onSignIn();
+      }
     };
 
     function initGapi() {
       gapi.load('client', async () => {
         await gapi.client.init({
-          apiKey: '',
           discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
         });
       });
@@ -94,8 +101,6 @@
             console.error('Token error', tokenResponse);
             return;
           }
-          accessToken = tokenResponse.access_token;
-          onSignIn();
         }
       });
     }
@@ -119,15 +124,7 @@
       listRecords();
     }
 
-    // Uložení záznamu
-    weightForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const entry = { date: dateInput.value, weight: parseFloat(weightInput.value) };
-      await saveRecord(entry);
-      weightInput.value = '';
-    });
-
-    // Čtení a zápis souboru v appDataFolder
+    // Základní CRUD
     async function getAppDataFile() {
       try {
         const res = await gapi.client.drive.files.list({
@@ -152,7 +149,6 @@
         }
         records.push(entry);
         if (file) {
-          // Update content only using uploadType=media
           const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=media`;
           const res = await fetch(updateUrl, {
             method: 'PATCH',
@@ -164,7 +160,6 @@
           });
           if (!res.ok) throw await res.json();
         } else {
-          // Create new file with metadata
           const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
           const createUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
           const blob = new Blob([JSON.stringify(records)], { type: 'application/json' });
@@ -178,29 +173,6 @@
           });
           if (!res.ok) throw await res.json();
         }
-        listRecords();
-      } catch (err) {
-        console.error('Error saving record', err);
-        alert('Chyba při ukládání: ' + (err.error?.message || err.message));
-      }
-    });
-          records = JSON.parse(download.body || '[]');
-        }
-        records.push(entry);
-        const blob = new Blob([JSON.stringify(records)], { type: 'application/json' });
-        const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', blob);
-        const url = file
-          ? `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=multipart&fields=id`
-          : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
-        const res = await fetch(url, {
-          method: file ? 'PATCH' : 'POST',
-          headers: { Authorization: `Bearer ${accessToken}` },
-          body: form
-        });
-        if (!res.ok) throw await res.json();
         listRecords();
       } catch (err) {
         console.error('Error saving record', err);
