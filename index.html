@@ -7,16 +7,19 @@
 
   <!-- Content Security Policy -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self';
-    script-src 'self' https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4 https://accounts.google.com https://accounts.google.com/gsi https://accounts.google.com/gsi/client https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline';
+    script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://accounts.google.com/gsi https://accounts.google.com/gsi/client https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
     frame-src https://accounts.google.com https://accounts.google.com/gsi https://content.googleapis.com;
     connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
 
   <!-- Tailwind CSS via Browser CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
+  <!-- Chart.js + date adapter -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
-  <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+  <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl my-6">
     <h1 class="text-2xl font-bold mb-4 text-center">Moje váha</h1>
     <div id="auth-section" class="text-center">
       <button id="login-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
@@ -38,6 +41,30 @@
         </button>
       </form>
       <p id="status" class="text-sm text-gray-500 mt-2 hidden"></p>
+      <hr class="my-4" />
+      <h2 class="text-xl font-semibold mb-2">Graf</h2>
+      <div class="flex flex-wrap gap-1 mb-2">
+        <button type="button" data-range="7d" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">7 dní</button>
+        <button type="button" data-range="30d" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">30 dní</button>
+        <button type="button" data-range="6m" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">6 měsíců</button>
+        <button type="button" data-range="1y" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">1 rok</button>
+        <button type="button" data-range="5y" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">5 let</button>
+        <button type="button" data-range="all" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Vše</button>
+      </div>
+      <div class="flex flex-wrap gap-3 text-sm mb-2">
+        <label class="flex items-center gap-1">
+          <span>Od:</span>
+          <input type="date" id="range-from" class="border-gray-300 rounded" />
+        </label>
+        <label class="flex items-center gap-1">
+          <span>Do:</span>
+          <input type="date" id="range-to" class="border-gray-300 rounded" />
+        </label>
+      </div>
+      <div class="relative h-64">
+        <canvas id="weight-chart"></canvas>
+        <p id="chart-empty" class="absolute inset-0 flex items-center justify-center text-gray-500 text-sm hidden">V rozsahu nejsou žádná data.</p>
+      </div>
       <hr class="my-4" />
       <h2 class="text-xl font-semibold mb-2">Historie</h2>
       <ul id="history-list" class="space-y-2 max-h-64 overflow-auto"></ul>
@@ -107,11 +134,49 @@
     pageSizeSelect.value = String(pageSize);
     let currentPage = 0;
 
+    const rangeFromInput = document.getElementById('range-from');
+    const rangeToInput = document.getElementById('range-to');
+    const chartCanvas = document.getElementById('weight-chart');
+    const chartEmptyEl = document.getElementById('chart-empty');
+    let chart = null;
+
     window.onload = () => {
       datetimeInput.value = toLocalInputValue(new Date());
+      applyRangePreset('1y');
       initGapi();
       initGis();
     };
+
+    function toDateInputValue(d) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function applyRangePreset(preset) {
+      const now = new Date();
+      const to = new Date(now);
+      let from = new Date(now);
+      switch (preset) {
+        case '7d': from.setDate(from.getDate() - 7); break;
+        case '30d': from.setDate(from.getDate() - 30); break;
+        case '6m': from.setMonth(from.getMonth() - 6); break;
+        case '1y': from.setFullYear(from.getFullYear() - 1); break;
+        case '5y': from.setFullYear(from.getFullYear() - 5); break;
+        case 'all':
+          if (records.length > 0) {
+            const oldest = records.reduce((min, r) => {
+              const t = new Date(r.datetime).getTime();
+              return t < min ? t : min;
+            }, Infinity);
+            from = new Date(oldest);
+          } else {
+            from.setFullYear(from.getFullYear() - 1);
+          }
+          break;
+      }
+      rangeFromInput.value = toDateInputValue(from);
+      rangeToInput.value = toDateInputValue(to);
+    }
 
     function toLocalInputValue(d) {
       const pad = (n) => String(n).padStart(2, '0');
@@ -176,6 +241,12 @@
       authSection.classList.remove('hidden');
       appSection.classList.add('hidden');
       historyList.innerHTML = '';
+      if (chart) {
+        chart.destroy();
+        chart = null;
+      }
+      chartEmptyEl.classList.add('hidden');
+      applyRangePreset('1y');
       setStatus('');
     });
 
@@ -228,6 +299,7 @@
         }
         recordsLoaded = true;
         renderRecords();
+        renderChart();
         setStatus('');
       } catch (err) {
         console.error('Error loading records', err);
@@ -269,6 +341,7 @@
         }
         currentPage = 0;
         renderRecords();
+        renderChart();
         weightInput.value = '';
         datetimeInput.value = toLocalInputValue(new Date());
         setStatus('');
@@ -327,6 +400,74 @@
       renderRecords();
       historyList.scrollTop = 0;
     });
+
+    document.querySelectorAll('.range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        applyRangePreset(btn.dataset.range);
+        renderChart();
+      });
+    });
+
+    rangeFromInput.addEventListener('change', renderChart);
+    rangeToInput.addEventListener('change', renderChart);
+
+    function renderChart() {
+      if (typeof Chart === 'undefined') return;
+      const fromVal = rangeFromInput.value;
+      const toVal = rangeToInput.value;
+      const fromTs = fromVal ? new Date(fromVal + 'T00:00:00').getTime() : -Infinity;
+      const toTs = toVal ? new Date(toVal + 'T23:59:59.999').getTime() : Infinity;
+
+      const points = records
+        .map(r => ({ x: new Date(r.datetime).getTime(), y: r.weight }))
+        .filter(p => p.x >= fromTs && p.x <= toTs)
+        .sort((a, b) => a.x - b.x);
+
+      if (points.length === 0) {
+        chartEmptyEl.classList.remove('hidden');
+      } else {
+        chartEmptyEl.classList.add('hidden');
+      }
+
+      const data = {
+        datasets: [{
+          label: 'Hmotnost (kg)',
+          data: points,
+          borderColor: '#16a34a',
+          backgroundColor: 'rgba(22, 163, 74, 0.1)',
+          tension: 0.2,
+          pointRadius: points.length > 200 ? 0 : 3,
+          spanGaps: true,
+        }]
+      };
+
+      if (chart) {
+        chart.data = data;
+        chart.options.scales.x.min = isFinite(fromTs) ? fromTs : undefined;
+        chart.options.scales.x.max = isFinite(toTs) ? toTs : undefined;
+        chart.update();
+        return;
+      }
+
+      chart = new Chart(chartCanvas, {
+        type: 'line',
+        data,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              type: 'time',
+              min: isFinite(fromTs) ? fromTs : undefined,
+              max: isFinite(toTs) ? toTs : undefined,
+              time: { tooltipFormat: 'PPp' }
+            },
+            y: { title: { display: true, text: 'kg' } }
+          }
+        }
+      });
+    }
 
     prevPageBtn.addEventListener('click', () => {
       if (currentPage > 0) {
