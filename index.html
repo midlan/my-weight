@@ -37,6 +37,7 @@
           Uložit
         </button>
       </form>
+      <p id="status" class="text-sm text-gray-500 mt-2 hidden"></p>
       <hr class="my-4" />
       <h2 class="text-xl font-semibold mb-2">Historie</h2>
       <ul id="history-list" class="space-y-2 max-h-64 overflow-auto"></ul>
@@ -60,15 +61,20 @@
     let tokenClient;
     let accessToken = null;
     let gapiReady = false;
+    let records = [];
+    let fileId = null;
+    let recordsLoaded = false;
 
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const authSection = document.getElementById('auth-section');
     const appSection = document.getElementById('app-section');
     const weightForm = document.getElementById('weight-form');
+    const submitBtn = weightForm.querySelector('button[type="submit"]');
     const historyList = document.getElementById('history-list');
     const datetimeInput = document.getElementById('datetime');
     const weightInput = document.getElementById('weight');
+    const statusEl = document.getElementById('status');
 
     window.onload = () => {
       datetimeInput.value = toLocalInputValue(new Date());
@@ -79,6 +85,25 @@
     function toLocalInputValue(d) {
       const pad = (n) => String(n).padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function setStatus(text, tone = 'info') {
+      if (!text) {
+        statusEl.classList.add('hidden');
+        statusEl.textContent = '';
+        return;
+      }
+      statusEl.textContent = text;
+      statusEl.className = 'text-sm mt-2 ' + (tone === 'error' ? 'text-red-600' : 'text-gray-500');
+    }
+
+    function describeDriveError(err) {
+      const reason = err?.result?.error?.errors?.[0]?.reason || err?.error?.errors?.[0]?.reason;
+      const message = err?.result?.error?.message || err?.error?.message || err?.message || 'neznámá chyba';
+      if (reason === 'storageQuotaExceeded') {
+        return 'Vaše Google úložiště je plné. Uvolněte místo na Google Drive a zkuste to znovu.';
+      }
+      return message;
     }
 
     function initGapi() {
@@ -113,15 +138,19 @@
     logoutBtn.addEventListener('click', () => {
       if (accessToken) google.accounts.oauth2.revoke(accessToken);
       accessToken = null;
+      records = [];
+      fileId = null;
+      recordsLoaded = false;
       authSection.classList.remove('hidden');
       appSection.classList.add('hidden');
       historyList.innerHTML = '';
+      setStatus('');
     });
 
-    function onSignIn() {
+    async function onSignIn() {
       authSection.classList.add('hidden');
       appSection.classList.remove('hidden');
-      listRecords();
+      await loadRecords();
     }
 
     weightForm.addEventListener('submit', async (e) => {
@@ -130,8 +159,8 @@
         alert('Nejste přihlášeni.');
         return;
       }
-      if (!gapiReady) {
-        alert('Google API se ještě načítá, zkuste to za chvíli.');
+      if (!gapiReady || !recordsLoaded) {
+        alert('Data se ještě načítají, zkuste to za chvíli.');
         return;
       }
       const local = datetimeInput.value;
@@ -142,35 +171,45 @@
       }
       const datetime = new Date(local).toISOString();
       await saveRecord({ datetime, weight });
-      weightInput.value = '';
-      datetimeInput.value = toLocalInputValue(new Date());
     });
 
-    async function getAppDataFile() {
+    async function findAppDataFile() {
+      const res = await gapi.client.drive.files.list({
+        spaces: 'appDataFolder',
+        fields: 'files(id,name)',
+        q: `name='${FILE_NAME}' and 'appDataFolder' in parents`
+      });
+      return res.result.files[0] || null;
+    }
+
+    async function loadRecords() {
+      setStatus('Načítám...');
       try {
-        const res = await gapi.client.drive.files.list({
-          spaces: 'appDataFolder',
-          fields: 'files(id,name)',
-          q: `name='${FILE_NAME}' and 'appDataFolder' in parents`
-        });
-        return res.result.files[0] || null;
+        const file = await findAppDataFile();
+        if (file) {
+          fileId = file.id;
+          const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+          records = JSON.parse(download.body || '[]');
+        } else {
+          fileId = null;
+          records = [];
+        }
+        recordsLoaded = true;
+        renderRecords();
+        setStatus('');
       } catch (err) {
-        console.error('Error listing files', err);
-        return null;
+        console.error('Error loading records', err);
+        setStatus('Chyba při načítání: ' + describeDriveError(err), 'error');
       }
     }
 
     async function saveRecord(entry) {
+      submitBtn.disabled = true;
+      setStatus('Ukládám...');
+      records.push(entry);
       try {
-        const file = await getAppDataFile();
-        let records = [];
-        if (file) {
-          const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
-          records = JSON.parse(download.body || '[]');
-        }
-        records.push(entry);
-        if (file) {
-          const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=media`;
+        if (fileId) {
+          const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
           const res = await fetch(updateUrl, {
             method: 'PATCH',
             headers: {
@@ -193,42 +232,42 @@
             body: form
           });
           if (!res.ok) throw await res.json();
+          const created = await res.json();
+          fileId = created.id;
         }
-        listRecords();
+        renderRecords();
+        weightInput.value = '';
+        datetimeInput.value = toLocalInputValue(new Date());
+        setStatus('');
       } catch (err) {
         console.error('Error saving record', err);
-        alert('Chyba při ukládání: ' + (err.error?.message || err.message));
+        records.pop();
+        setStatus('Chyba při ukládání: ' + describeDriveError(err), 'error');
+      } finally {
+        submitBtn.disabled = false;
       }
     }
 
-    async function listRecords() {
+    const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' });
+
+    function renderRecords() {
       historyList.innerHTML = '';
-      try {
-        const file = await getAppDataFile();
-        if (!file) {
-          const li = document.createElement('li');
-          li.className = 'p-2 text-gray-500';
-          li.textContent = 'Žádné záznamy k zobrazení.';
-          historyList.appendChild(li);
-          return;
-        }
-        const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
-        const records = JSON.parse(download.body || '[]');
-        records.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
-        const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' });
-        records.forEach(e => {
-          const li = document.createElement('li');
-          li.className = 'p-2 bg-gray-50 rounded flex justify-between';
-          li.textContent = `${formatter.format(new Date(e.datetime))}: ${e.weight} kg`;
-          historyList.appendChild(li);
-        });
-      } catch (err) {
-        console.error('Error loading records', err);
+      if (records.length === 0) {
         const li = document.createElement('li');
-        li.className = 'p-2 text-red-600';
-        li.textContent = 'Chyba při načítání historie.';
+        li.className = 'p-2 text-gray-500';
+        li.textContent = 'Žádné záznamy k zobrazení.';
         historyList.appendChild(li);
+        return;
       }
+      const sorted = records.slice().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
+      const frag = document.createDocumentFragment();
+      sorted.forEach(e => {
+        const li = document.createElement('li');
+        li.className = 'p-2 bg-gray-50 rounded flex justify-between';
+        li.textContent = `${formatter.format(new Date(e.datetime))}: ${e.weight} kg`;
+        frag.appendChild(li);
+      });
+      historyList.appendChild(frag);
     }
   </script>
 </body>
