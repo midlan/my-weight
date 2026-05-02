@@ -41,10 +41,22 @@
       <hr class="my-4" />
       <h2 class="text-xl font-semibold mb-2">Historie</h2>
       <ul id="history-list" class="space-y-2 max-h-64 overflow-auto"></ul>
-      <div id="pagination" class="mt-2 flex items-center justify-between text-sm hidden">
-        <button id="prev-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Předchozí</button>
-        <span id="page-info" class="text-gray-600"></span>
-        <button id="next-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Další</button>
+      <div id="pagination" class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm hidden">
+        <label class="flex items-center gap-1 text-gray-600">
+          <span>Na stránku:</span>
+          <select id="page-size" class="border-gray-300 rounded">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="250">250</option>
+            <option value="500">500</option>
+          </select>
+        </label>
+        <div class="flex items-center gap-2">
+          <button id="prev-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Předchozí</button>
+          <span id="page-info" class="text-gray-600"></span>
+          <button id="next-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Další</button>
+        </div>
       </div>
       <button id="logout-btn" class="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
         Odhlásit se
@@ -84,8 +96,15 @@
     const prevPageBtn = document.getElementById('prev-page');
     const nextPageBtn = document.getElementById('next-page');
     const pageInfoEl = document.getElementById('page-info');
+    const pageSizeSelect = document.getElementById('page-size');
 
-    const PAGE_SIZE = 50;
+    const PAGE_SIZE_KEY = 'my-weight:pageSize';
+    const ALLOWED_PAGE_SIZES = [25, 50, 100, 250, 500];
+    let pageSize = (() => {
+      const stored = parseInt(localStorage.getItem(PAGE_SIZE_KEY), 10);
+      return ALLOWED_PAGE_SIZES.includes(stored) ? stored : 50;
+    })();
+    pageSizeSelect.value = String(pageSize);
     let currentPage = 0;
 
     window.onload = () => {
@@ -275,11 +294,11 @@
         return;
       }
       const sorted = records.slice().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
-      const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+      const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
       if (currentPage >= totalPages) currentPage = totalPages - 1;
       if (currentPage < 0) currentPage = 0;
-      const start = currentPage * PAGE_SIZE;
-      const pageItems = sorted.slice(start, start + PAGE_SIZE);
+      const start = currentPage * pageSize;
+      const pageItems = sorted.slice(start, start + pageSize);
       const frag = document.createDocumentFragment();
       pageItems.forEach(e => {
         const li = document.createElement('li');
@@ -289,7 +308,7 @@
       });
       historyList.appendChild(frag);
 
-      if (sorted.length > PAGE_SIZE) {
+      if (sorted.length > ALLOWED_PAGE_SIZES[0]) {
         paginationEl.classList.remove('hidden');
         pageInfoEl.textContent = `${start + 1}–${start + pageItems.length} z ${sorted.length}`;
         prevPageBtn.disabled = currentPage === 0;
@@ -298,6 +317,16 @@
         paginationEl.classList.add('hidden');
       }
     }
+
+    pageSizeSelect.addEventListener('change', () => {
+      const next = parseInt(pageSizeSelect.value, 10);
+      if (!ALLOWED_PAGE_SIZES.includes(next)) return;
+      pageSize = next;
+      localStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
+      currentPage = 0;
+      renderRecords();
+      historyList.scrollTop = 0;
+    });
 
     prevPageBtn.addEventListener('click', () => {
       if (currentPage > 0) {
