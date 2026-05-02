@@ -7,16 +7,19 @@
 
   <!-- Content Security Policy -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self';
-    script-src 'self' https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4 https://accounts.google.com https://accounts.google.com/gsi https://accounts.google.com/gsi/client https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline';
+    script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://accounts.google.com/gsi https://accounts.google.com/gsi/client https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
     frame-src https://accounts.google.com https://accounts.google.com/gsi https://content.googleapis.com;
-    connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">>
+    connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
 
   <!-- Tailwind CSS via Browser CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
+  <!-- Chart.js + date adapter -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
-  <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+  <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl my-6">
     <h1 class="text-2xl font-bold mb-4 text-center">Moje váha</h1>
     <div id="auth-section" class="text-center">
       <button id="login-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
@@ -26,8 +29,8 @@
     <div id="app-section" class="hidden">
       <form id="weight-form" class="space-y-4">
         <div>
-          <label for="date" class="block text-sm font-medium">Datum</label>
-          <input type="date" id="date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" />
+          <label for="datetime" class="block text-sm font-medium">Datum a čas</label>
+          <input type="datetime-local" id="datetime" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" />
         </div>
         <div>
           <label for="weight" class="block text-sm font-medium">Hmotnost (kg)</label>
@@ -37,9 +40,51 @@
           Uložit
         </button>
       </form>
+      <p id="status" class="text-sm text-gray-500 mt-2 hidden"></p>
+      <hr class="my-4" />
+      <h2 class="text-xl font-semibold mb-2">Graf</h2>
+      <div class="flex flex-wrap gap-1 mb-2">
+        <button type="button" data-range="7d" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">7 dní</button>
+        <button type="button" data-range="30d" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">30 dní</button>
+        <button type="button" data-range="6m" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">6 měsíců</button>
+        <button type="button" data-range="1y" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">1 rok</button>
+        <button type="button" data-range="5y" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">5 let</button>
+        <button type="button" data-range="all" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Vše</button>
+      </div>
+      <div class="flex flex-wrap gap-3 text-sm mb-2">
+        <label class="flex items-center gap-1">
+          <span>Od:</span>
+          <input type="date" id="range-from" class="border-gray-300 rounded" />
+        </label>
+        <label class="flex items-center gap-1">
+          <span>Do:</span>
+          <input type="date" id="range-to" class="border-gray-300 rounded" />
+        </label>
+      </div>
+      <div class="relative h-64">
+        <canvas id="weight-chart"></canvas>
+        <p id="chart-empty" class="absolute inset-0 flex items-center justify-center text-gray-500 text-sm hidden">V rozsahu nejsou žádná data.</p>
+      </div>
       <hr class="my-4" />
       <h2 class="text-xl font-semibold mb-2">Historie</h2>
       <ul id="history-list" class="space-y-2 max-h-64 overflow-auto"></ul>
+      <div id="pagination" class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm hidden">
+        <label class="flex items-center gap-1 text-gray-600">
+          <span>Na stránku:</span>
+          <select id="page-size" class="border-gray-300 rounded">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="250">250</option>
+            <option value="500">500</option>
+          </select>
+        </label>
+        <div class="flex items-center gap-2">
+          <button id="prev-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Předchozí</button>
+          <span id="page-info" class="text-gray-600"></span>
+          <button id="next-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Další</button>
+        </div>
+      </div>
       <button id="logout-btn" class="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
         Odhlásit se
       </button>
@@ -59,27 +104,110 @@
 
     let tokenClient;
     let accessToken = null;
+    let gapiReady = false;
+    let records = [];
+    let fileId = null;
+    let recordsLoaded = false;
 
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const authSection = document.getElementById('auth-section');
     const appSection = document.getElementById('app-section');
     const weightForm = document.getElementById('weight-form');
+    const submitBtn = weightForm.querySelector('button[type="submit"]');
     const historyList = document.getElementById('history-list');
-    const dateInput = document.getElementById('date');
+    const datetimeInput = document.getElementById('datetime');
     const weightInput = document.getElementById('weight');
+    const statusEl = document.getElementById('status');
+    const paginationEl = document.getElementById('pagination');
+    const prevPageBtn = document.getElementById('prev-page');
+    const nextPageBtn = document.getElementById('next-page');
+    const pageInfoEl = document.getElementById('page-info');
+    const pageSizeSelect = document.getElementById('page-size');
+
+    const PAGE_SIZE_KEY = 'my-weight:pageSize';
+    const ALLOWED_PAGE_SIZES = [25, 50, 100, 250, 500];
+    let pageSize = (() => {
+      const stored = parseInt(localStorage.getItem(PAGE_SIZE_KEY), 10);
+      return ALLOWED_PAGE_SIZES.includes(stored) ? stored : 50;
+    })();
+    pageSizeSelect.value = String(pageSize);
+    let currentPage = 0;
+
+    const rangeFromInput = document.getElementById('range-from');
+    const rangeToInput = document.getElementById('range-to');
+    const chartCanvas = document.getElementById('weight-chart');
+    const chartEmptyEl = document.getElementById('chart-empty');
+    let chart = null;
 
     window.onload = () => {
-      dateInput.valueAsDate = new Date();
+      datetimeInput.value = toLocalInputValue(new Date());
+      applyRangePreset('1y');
       initGapi();
       initGis();
     };
+
+    function toDateInputValue(d) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function applyRangePreset(preset) {
+      const now = new Date();
+      const to = new Date(now);
+      let from = new Date(now);
+      switch (preset) {
+        case '7d': from.setDate(from.getDate() - 7); break;
+        case '30d': from.setDate(from.getDate() - 30); break;
+        case '6m': from.setMonth(from.getMonth() - 6); break;
+        case '1y': from.setFullYear(from.getFullYear() - 1); break;
+        case '5y': from.setFullYear(from.getFullYear() - 5); break;
+        case 'all':
+          if (records.length > 0) {
+            const oldest = records.reduce((min, r) => {
+              const t = new Date(r.datetime).getTime();
+              return t < min ? t : min;
+            }, Infinity);
+            from = new Date(oldest);
+          } else {
+            from.setFullYear(from.getFullYear() - 1);
+          }
+          break;
+      }
+      rangeFromInput.value = toDateInputValue(from);
+      rangeToInput.value = toDateInputValue(to);
+    }
+
+    function toLocalInputValue(d) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function setStatus(text, tone = 'info') {
+      if (!text) {
+        statusEl.classList.add('hidden');
+        statusEl.textContent = '';
+        return;
+      }
+      statusEl.textContent = text;
+      statusEl.className = 'text-sm mt-2 ' + (tone === 'error' ? 'text-red-600' : 'text-gray-500');
+    }
+
+    function describeDriveError(err) {
+      const reason = err?.result?.error?.errors?.[0]?.reason || err?.error?.errors?.[0]?.reason;
+      const message = err?.result?.error?.message || err?.error?.message || err?.message || 'neznámá chyba';
+      if (reason === 'storageQuotaExceeded') {
+        return 'Vaše Google úložiště je plné. Uvolněte místo na Google Drive a zkuste to znovu.';
+      }
+      return message;
+    }
 
     function initGapi() {
       gapi.load('client', async () => {
         await gapi.client.init({
           discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
         });
+        gapiReady = true;
       });
     }
 
@@ -106,42 +234,86 @@
     logoutBtn.addEventListener('click', () => {
       if (accessToken) google.accounts.oauth2.revoke(accessToken);
       accessToken = null;
+      records = [];
+      fileId = null;
+      recordsLoaded = false;
+      currentPage = 0;
       authSection.classList.remove('hidden');
       appSection.classList.add('hidden');
       historyList.innerHTML = '';
+      if (chart) {
+        chart.destroy();
+        chart = null;
+      }
+      chartEmptyEl.classList.add('hidden');
+      applyRangePreset('1y');
+      setStatus('');
     });
 
-    function onSignIn() {
+    async function onSignIn() {
       authSection.classList.add('hidden');
       appSection.classList.remove('hidden');
-      listRecords();
+      await loadRecords();
     }
 
-    async function getAppDataFile() {
+    weightForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!accessToken) {
+        alert('Nejste přihlášeni.');
+        return;
+      }
+      if (!gapiReady || !recordsLoaded) {
+        alert('Data se ještě načítají, zkuste to za chvíli.');
+        return;
+      }
+      const local = datetimeInput.value;
+      const weight = parseFloat(weightInput.value);
+      if (!local || Number.isNaN(weight)) {
+        alert('Vyplňte datum/čas a hmotnost.');
+        return;
+      }
+      const datetime = new Date(local).toISOString();
+      await saveRecord({ datetime, weight });
+    });
+
+    async function findAppDataFile() {
+      const res = await gapi.client.drive.files.list({
+        spaces: 'appDataFolder',
+        fields: 'files(id,name)',
+        q: `name='${FILE_NAME}' and 'appDataFolder' in parents`
+      });
+      return res.result.files[0] || null;
+    }
+
+    async function loadRecords() {
+      setStatus('Načítám...');
       try {
-        const res = await gapi.client.drive.files.list({
-          spaces: 'appDataFolder',
-          fields: 'files(id,name)',
-          q: `name='${FILE_NAME}'`
-        });
-        return res.result.files[0] || null;
+        const file = await findAppDataFile();
+        if (file) {
+          fileId = file.id;
+          const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+          records = JSON.parse(download.body || '[]');
+        } else {
+          fileId = null;
+          records = [];
+        }
+        recordsLoaded = true;
+        renderRecords();
+        renderChart();
+        setStatus('');
       } catch (err) {
-        console.error('Error listing files', err);
-        return null;
+        console.error('Error loading records', err);
+        setStatus('Chyba při načítání: ' + describeDriveError(err), 'error');
       }
     }
 
     async function saveRecord(entry) {
+      submitBtn.disabled = true;
+      setStatus('Ukládám...');
+      records.push(entry);
       try {
-        const file = await getAppDataFile();
-        let records = [];
-        if (file) {
-          const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
-          records = JSON.parse(download.body || '[]');
-        }
-        records.push(entry);
-        if (file) {
-          const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=media`;
+        if (fileId) {
+          const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
           const res = await fetch(updateUrl, {
             method: 'PATCH',
             headers: {
@@ -164,42 +336,152 @@
             body: form
           });
           if (!res.ok) throw await res.json();
+          const created = await res.json();
+          fileId = created.id;
         }
-        listRecords();
+        currentPage = 0;
+        renderRecords();
+        renderChart();
+        weightInput.value = '';
+        datetimeInput.value = toLocalInputValue(new Date());
+        setStatus('');
       } catch (err) {
         console.error('Error saving record', err);
-        alert('Chyba při ukládání: ' + (err.error?.message || err.message));
+        records.pop();
+        setStatus('Chyba při ukládání: ' + describeDriveError(err), 'error');
+      } finally {
+        submitBtn.disabled = false;
       }
     }
 
-    async function listRecords() {
+    const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' });
+
+    function renderRecords() {
       historyList.innerHTML = '';
-      try {
-        const file = await getAppDataFile();
-        if (!file) {
-          const li = document.createElement('li');
-          li.className = 'p-2 text-gray-500';
-          li.textContent = 'Žádné záznamy k zobrazení.';
-          historyList.appendChild(li);
-          return;
-        }
-        const download = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
-        const records = JSON.parse(download.body || '[]');
-        records.sort((a, b) => new Date(b.date) - new Date(a.date));
-        records.forEach(e => {
-          const li = document.createElement('li');
-          li.className = 'p-2 bg-gray-50 rounded flex justify-between';
-          li.textContent = `${e.date}: ${e.weight} kg`;
-          historyList.appendChild(li);
-        });
-      } catch (err) {
-        console.error('Error loading records', err);
+      if (records.length === 0) {
         const li = document.createElement('li');
-        li.className = 'p-2 text-red-600';
-        li.textContent = 'Chyba při načítání historie.';
+        li.className = 'p-2 text-gray-500';
+        li.textContent = 'Žádné záznamy k zobrazení.';
         historyList.appendChild(li);
+        paginationEl.classList.add('hidden');
+        return;
+      }
+      const sorted = records.slice().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
+      const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+      if (currentPage >= totalPages) currentPage = totalPages - 1;
+      if (currentPage < 0) currentPage = 0;
+      const start = currentPage * pageSize;
+      const pageItems = sorted.slice(start, start + pageSize);
+      const frag = document.createDocumentFragment();
+      pageItems.forEach(e => {
+        const li = document.createElement('li');
+        li.className = 'p-2 bg-gray-50 rounded flex justify-between';
+        li.textContent = `${formatter.format(new Date(e.datetime))}: ${e.weight} kg`;
+        frag.appendChild(li);
+      });
+      historyList.appendChild(frag);
+
+      if (sorted.length > ALLOWED_PAGE_SIZES[0]) {
+        paginationEl.classList.remove('hidden');
+        pageInfoEl.textContent = `${start + 1}–${start + pageItems.length} z ${sorted.length}`;
+        prevPageBtn.disabled = currentPage === 0;
+        nextPageBtn.disabled = currentPage >= totalPages - 1;
+      } else {
+        paginationEl.classList.add('hidden');
       }
     }
+
+    pageSizeSelect.addEventListener('change', () => {
+      const next = parseInt(pageSizeSelect.value, 10);
+      if (!ALLOWED_PAGE_SIZES.includes(next)) return;
+      pageSize = next;
+      localStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
+      currentPage = 0;
+      renderRecords();
+      historyList.scrollTop = 0;
+    });
+
+    document.querySelectorAll('.range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        applyRangePreset(btn.dataset.range);
+        renderChart();
+      });
+    });
+
+    rangeFromInput.addEventListener('change', renderChart);
+    rangeToInput.addEventListener('change', renderChart);
+
+    function renderChart() {
+      if (typeof Chart === 'undefined') return;
+      const fromVal = rangeFromInput.value;
+      const toVal = rangeToInput.value;
+      const fromTs = fromVal ? new Date(fromVal + 'T00:00:00').getTime() : -Infinity;
+      const toTs = toVal ? new Date(toVal + 'T23:59:59.999').getTime() : Infinity;
+
+      const points = records
+        .map(r => ({ x: new Date(r.datetime).getTime(), y: r.weight }))
+        .filter(p => p.x >= fromTs && p.x <= toTs)
+        .sort((a, b) => a.x - b.x);
+
+      if (points.length === 0) {
+        chartEmptyEl.classList.remove('hidden');
+      } else {
+        chartEmptyEl.classList.add('hidden');
+      }
+
+      const data = {
+        datasets: [{
+          label: 'Hmotnost (kg)',
+          data: points,
+          borderColor: '#16a34a',
+          backgroundColor: 'rgba(22, 163, 74, 0.1)',
+          tension: 0.2,
+          pointRadius: points.length > 200 ? 0 : 3,
+          spanGaps: true,
+        }]
+      };
+
+      if (chart) {
+        chart.data = data;
+        chart.options.scales.x.min = isFinite(fromTs) ? fromTs : undefined;
+        chart.options.scales.x.max = isFinite(toTs) ? toTs : undefined;
+        chart.update();
+        return;
+      }
+
+      chart = new Chart(chartCanvas, {
+        type: 'line',
+        data,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              type: 'time',
+              min: isFinite(fromTs) ? fromTs : undefined,
+              max: isFinite(toTs) ? toTs : undefined,
+              time: { tooltipFormat: 'PPp' }
+            },
+            y: { title: { display: true, text: 'kg' } }
+          }
+        }
+      });
+    }
+
+    prevPageBtn.addEventListener('click', () => {
+      if (currentPage > 0) {
+        currentPage--;
+        renderRecords();
+        historyList.scrollTop = 0;
+      }
+    });
+
+    nextPageBtn.addEventListener('click', () => {
+      currentPage++;
+      renderRecords();
+      historyList.scrollTop = 0;
+    });
   </script>
 </body>
 </html>
