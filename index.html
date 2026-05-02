@@ -41,6 +41,11 @@
       <hr class="my-4" />
       <h2 class="text-xl font-semibold mb-2">Historie</h2>
       <ul id="history-list" class="space-y-2 max-h-64 overflow-auto"></ul>
+      <div id="pagination" class="mt-2 flex items-center justify-between text-sm hidden">
+        <button id="prev-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Předchozí</button>
+        <span id="page-info" class="text-gray-600"></span>
+        <button id="next-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Další</button>
+      </div>
       <button id="logout-btn" class="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
         Odhlásit se
       </button>
@@ -75,6 +80,13 @@
     const datetimeInput = document.getElementById('datetime');
     const weightInput = document.getElementById('weight');
     const statusEl = document.getElementById('status');
+    const paginationEl = document.getElementById('pagination');
+    const prevPageBtn = document.getElementById('prev-page');
+    const nextPageBtn = document.getElementById('next-page');
+    const pageInfoEl = document.getElementById('page-info');
+
+    const PAGE_SIZE = 50;
+    let currentPage = 0;
 
     window.onload = () => {
       datetimeInput.value = toLocalInputValue(new Date());
@@ -141,6 +153,7 @@
       records = [];
       fileId = null;
       recordsLoaded = false;
+      currentPage = 0;
       authSection.classList.remove('hidden');
       appSection.classList.add('hidden');
       historyList.innerHTML = '';
@@ -235,6 +248,7 @@
           const created = await res.json();
           fileId = created.id;
         }
+        currentPage = 0;
         renderRecords();
         weightInput.value = '';
         datetimeInput.value = toLocalInputValue(new Date());
@@ -257,18 +271,47 @@
         li.className = 'p-2 text-gray-500';
         li.textContent = 'Žádné záznamy k zobrazení.';
         historyList.appendChild(li);
+        paginationEl.classList.add('hidden');
         return;
       }
       const sorted = records.slice().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
+      const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+      if (currentPage >= totalPages) currentPage = totalPages - 1;
+      if (currentPage < 0) currentPage = 0;
+      const start = currentPage * PAGE_SIZE;
+      const pageItems = sorted.slice(start, start + PAGE_SIZE);
       const frag = document.createDocumentFragment();
-      sorted.forEach(e => {
+      pageItems.forEach(e => {
         const li = document.createElement('li');
         li.className = 'p-2 bg-gray-50 rounded flex justify-between';
         li.textContent = `${formatter.format(new Date(e.datetime))}: ${e.weight} kg`;
         frag.appendChild(li);
       });
       historyList.appendChild(frag);
+
+      if (sorted.length > PAGE_SIZE) {
+        paginationEl.classList.remove('hidden');
+        pageInfoEl.textContent = `${start + 1}–${start + pageItems.length} z ${sorted.length}`;
+        prevPageBtn.disabled = currentPage === 0;
+        nextPageBtn.disabled = currentPage >= totalPages - 1;
+      } else {
+        paginationEl.classList.add('hidden');
+      }
     }
+
+    prevPageBtn.addEventListener('click', () => {
+      if (currentPage > 0) {
+        currentPage--;
+        renderRecords();
+        historyList.scrollTop = 0;
+      }
+    });
+
+    nextPageBtn.addEventListener('click', () => {
+      currentPage++;
+      renderRecords();
+      historyList.scrollTop = 0;
+    });
   </script>
 </body>
 </html>
