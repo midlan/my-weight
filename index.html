@@ -146,6 +146,7 @@
     let chart = null;
 
     let editingIndex = -1;
+    let isSavingEdit = false;
     let silentAttempt = false;
     const initState = { gapi: false, gis: false };
 
@@ -581,6 +582,7 @@
     function buildHistoryRow(r, idx) {
       const li = document.createElement('li');
       li.className = 'p-2 bg-gray-50 rounded flex items-center justify-between gap-2';
+      li.dataset.idx = String(idx);
 
       if (idx === editingIndex) {
         const dtInput = document.createElement('input');
@@ -594,25 +596,34 @@
         wInput.value = String(r.weight);
         wInput.className = 'w-24 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm text-right';
 
-        const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 hover:bg-green-50');
-        saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value));
+        let actions;
+        if (isSavingEdit) {
+          dtInput.disabled = true;
+          wInput.disabled = true;
+          actions = document.createElement('span');
+          actions.className = 'text-sm text-gray-500 px-2 shrink-0 whitespace-nowrap';
+          actions.textContent = 'Ukládám...';
+        } else {
+          const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 hover:bg-green-50');
+          saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value));
 
-        const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 hover:bg-gray-200');
-        cancelBtn.addEventListener('click', () => { editingIndex = -1; renderRecords(); });
+          const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 hover:bg-gray-200');
+          cancelBtn.addEventListener('click', () => { editingIndex = -1; renderRecords(); });
 
-        [dtInput, wInput].forEach(inp => {
-          inp.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
-            else if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
+          [dtInput, wInput].forEach(inp => {
+            inp.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
+              else if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
+            });
           });
-        });
 
-        const actions = document.createElement('div');
-        actions.className = 'flex gap-1 shrink-0';
-        actions.append(saveBtn, cancelBtn);
+          actions = document.createElement('div');
+          actions.className = 'flex gap-1 shrink-0';
+          actions.append(saveBtn, cancelBtn);
+          setTimeout(() => wInput.focus(), 0);
+        }
 
         li.append(dtInput, wInput, actions);
-        setTimeout(() => wInput.focus(), 0);
       } else {
         const dateSpan = document.createElement('span');
         dateSpan.className = 'flex-1';
@@ -678,21 +689,32 @@
       if (Number.isNaN(w)) { alert('Neplatná hmotnost.'); return; }
       const original = records[idx];
       records[idx] = { datetime: dt.toISOString(), weight: w };
+      isSavingEdit = true;
+      renderRecords();
       submitBtn.disabled = true;
       wipeBtn.disabled = true;
-      setStatus('Ukládám...');
       try {
         await uploadRecords();
+        isSavingEdit = false;
         editingIndex = -1;
         renderRecords();
         renderChart();
         prefillWeightInput();
-        setStatus('');
       } catch (err) {
         console.error('Error editing record', err);
         records[idx] = original;
+        isSavingEdit = false;
         renderRecords();
-        setStatus('Chyba při ukládání: ' + describeDriveError(err), 'error');
+        const failedLi = historyList.querySelector(`li[data-idx="${idx}"]`);
+        if (failedLi) {
+          const inps = failedLi.querySelectorAll('input');
+          if (inps.length >= 2) {
+            inps[0].value = dtValue;
+            inps[1].value = weightValue;
+            inps[1].focus();
+          }
+        }
+        alert('Chyba při ukládání: ' + describeDriveError(err));
       } finally {
         submitBtn.disabled = false;
         wipeBtn.disabled = false;
