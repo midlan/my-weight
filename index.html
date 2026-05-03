@@ -26,7 +26,7 @@
     <h1 class="text-2xl font-bold mb-4 text-center">Moje váha</h1>
     <div id="loading-section" class="text-center py-8">
       <div class="inline-block w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin" role="status" aria-label="Načítám"></div>
-      <p class="text-sm text-gray-500 mt-2">Načítám...</p>
+      <p id="loading-message" class="text-sm text-gray-500 mt-2">Načítám...</p>
     </div>
     <div id="auth-section" class="hidden text-center">
       <button id="login-btn" class="inline-flex items-center gap-3 px-4 py-2 bg-white text-gray-700 font-medium border border-gray-300 rounded shadow-sm hover:bg-gray-50 transition">
@@ -136,6 +136,7 @@
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const loadingSection = document.getElementById('loading-section');
+    const loadingMessageEl = document.getElementById('loading-message');
     const authSection = document.getElementById('auth-section');
     const appSection = document.getElementById('app-section');
 
@@ -143,6 +144,11 @@
       loadingSection.classList.toggle('hidden', name !== 'loading');
       authSection.classList.toggle('hidden', name !== 'auth');
       appSection.classList.toggle('hidden', name !== 'app');
+    }
+
+    function showLoading(msg = 'Načítám...') {
+      loadingMessageEl.textContent = msg;
+      showSection('loading');
     }
     const weightForm = document.getElementById('weight-form');
     const submitBtn = weightForm.querySelector('button[type="submit"]');
@@ -410,7 +416,7 @@
     });
 
     async function onSignIn() {
-      showSection('loading');
+      showLoading();
       await loadRecords();
     }
 
@@ -624,9 +630,7 @@
         alert('Zadaný text se neshoduje, data nebyla smazána.');
         return;
       }
-      submitBtn.disabled = true;
-      wipeBtn.disabled = true;
-      setStatus('Mažu data...');
+      showLoading('Mažu data...');
       try {
         if (fileId) {
           await gapi.client.drive.files.delete({ fileId });
@@ -638,15 +642,12 @@
         renderRecords();
         renderChart();
         prefillWeightInput();
-        setStatus('');
+        showSection('app');
         alert('Data byla smazána.');
       } catch (err) {
         console.error('Error wiping data', err);
-        setStatus('');
+        showSection('app');
         alert('Chyba při mazání: ' + describeDriveError(err));
-      } finally {
-        submitBtn.disabled = false;
-        wipeBtn.disabled = false;
       }
     }
 
