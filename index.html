@@ -420,7 +420,12 @@
       if (dt.getTime() > Date.now()) {
         if (!confirm('Datum a čas záznamu je v budoucnosti. Opravdu uložit?')) return;
       }
-      await saveRecord({ datetime: dt.toISOString(), weight });
+      const datetimeIso = dt.toISOString();
+      if (findDuplicateRecord(datetimeIso, weight) !== -1) {
+        alert('Záznam s tímto datem a hmotností již existuje.');
+        return;
+      }
+      await saveRecord({ datetime: datetimeIso, weight });
     });
 
     async function findAppDataFile() {
@@ -603,6 +608,15 @@
       return Number(w).toLocaleString(undefined, { maximumFractionDigits: 10 });
     }
 
+    function findDuplicateRecord(datetimeIso, weight, excludeIdx = -1) {
+      for (let i = 0; i < records.length; i++) {
+        if (i === excludeIdx) continue;
+        const r = records[i];
+        if (r && r.datetime === datetimeIso && r.weight === weight) return i;
+      }
+      return -1;
+    }
+
     function prefillWeightInput() {
       const valid = records.filter(r => r && typeof r.weight === 'number' && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
       if (valid.length === 0) {
@@ -763,8 +777,13 @@
       if (Number.isNaN(dt.getTime())) { alert('Neplatné datum/čas.'); return; }
       const w = parseFloat(weightValue);
       if (Number.isNaN(w)) { alert('Neplatná hmotnost.'); return; }
+      const datetimeIso = dt.toISOString();
+      if (findDuplicateRecord(datetimeIso, w, idx) !== -1) {
+        alert('Záznam s tímto datem a hmotností již existuje.');
+        return;
+      }
       const original = records[idx];
-      records[idx] = { datetime: dt.toISOString(), weight: w };
+      records[idx] = { datetime: datetimeIso, weight: w };
       isSavingEdit = true;
       renderRecords();
       submitBtn.disabled = true;
