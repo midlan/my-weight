@@ -132,6 +132,15 @@
 
     const PAGE_SIZE_KEY = 'my-weight:pageSize';
     const ALLOWED_PAGE_SIZES = [25, 50, 100, 250, 500];
+    const RANGE_PRESET_KEY = 'my-weight:rangePreset';
+    const ALLOWED_PRESETS = ['7d', '30d', '6m', '1y', '5y', 'all'];
+
+    function loadStoredPreset() {
+      try {
+        const stored = localStorage.getItem(RANGE_PRESET_KEY);
+        return ALLOWED_PRESETS.includes(stored) ? stored : '1y';
+      } catch { return '1y'; }
+    }
     let pageSize = (() => {
       const stored = parseInt(localStorage.getItem(PAGE_SIZE_KEY), 10);
       return ALLOWED_PAGE_SIZES.includes(stored) ? stored : 50;
@@ -184,7 +193,7 @@
 
     window.onload = () => {
       datetimeInput.value = toLocalInputValue(new Date());
-      applyRangePreset('1y');
+      applyRangePreset(loadStoredPreset());
       initGapi();
       initGis();
     };
@@ -219,6 +228,7 @@
       rangeFromInput.value = toDateInputValue(from);
       rangeToInput.value = toDateInputValue(to);
       currentPreset = preset;
+      try { localStorage.setItem(RANGE_PRESET_KEY, preset); } catch {}
       updatePresetButtons();
     }
 
@@ -331,7 +341,7 @@
         chart = null;
       }
       chartEmptyEl.classList.add('hidden');
-      applyRangePreset('1y');
+      applyRangePreset(loadStoredPreset());
       setStatus('');
     });
 
