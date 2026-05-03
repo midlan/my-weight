@@ -455,8 +455,8 @@
           }
           datetimeIso = dt.toISOString();
         }
-        if (findDuplicateRecord(datetimeIso, weight) !== -1) {
-          alert('Záznam s tímto datem a hmotností již existuje.');
+        if (findDuplicateRecord(datetimeIso) !== -1) {
+          alert('Záznam s tímto datem již existuje.');
           return;
         }
         await saveRecord({ datetime: datetimeIso, weight });
@@ -648,12 +648,12 @@
       return typeof iso === 'string' ? iso.substring(0, 16) : '';
     }
 
-    function findDuplicateRecord(datetimeIso, weight, excludeIdx = -1) {
+    function findDuplicateRecord(datetimeIso, excludeIdx = -1) {
       const targetMin = isoToMinute(datetimeIso);
       for (let i = 0; i < records.length; i++) {
         if (i === excludeIdx) continue;
         const r = records[i];
-        if (r && isoToMinute(r.datetime) === targetMin && r.weight === weight) return i;
+        if (r && isoToMinute(r.datetime) === targetMin) return i;
       }
       return -1;
     }
@@ -819,8 +819,8 @@
       const w = parseFloat(weightValue);
       if (Number.isNaN(w)) { alert('Neplatná hmotnost.'); return; }
       const datetimeIso = dt.toISOString();
-      if (findDuplicateRecord(datetimeIso, w, idx) !== -1) {
-        alert('Záznam s tímto datem a hmotností již existuje.');
+      if (findDuplicateRecord(datetimeIso, idx) !== -1) {
+        alert('Záznam s tímto datem již existuje.');
         return;
       }
       const original = records[idx];
