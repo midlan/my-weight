@@ -168,7 +168,16 @@
     let editingIndex = -1;
     let isSavingEdit = false;
     let silentAttempt = false;
+    let silentTimeoutId = null;
     let currentPreset = '7d';
+
+    function clearSilentState() {
+      if (silentTimeoutId) {
+        clearTimeout(silentTimeoutId);
+        silentTimeoutId = null;
+      }
+      silentAttempt = false;
+    }
     const initState = { gapi: false, gis: false };
 
     const TOKEN_STORAGE_KEY = 'my-weight:token';
@@ -296,7 +305,7 @@
         ux_mode: 'popup',
         callback: (tokenResponse) => {
           const wasSilent = silentAttempt;
-          silentAttempt = false;
+          clearSilentState();
           if (tokenResponse.error) {
             if (!wasSilent) console.error('Token error', tokenResponse);
             setStatus('');
@@ -308,6 +317,12 @@
           if (gapiReady) gapi.client.setToken({ access_token: accessToken });
           setStatus('');
           onSignIn();
+        },
+        error_callback: (err) => {
+          console.warn('Token client error', err);
+          clearSilentState();
+          setStatus('');
+          showSection('auth');
         }
       });
       initState.gis = true;
@@ -328,6 +343,13 @@
       }
       silentAttempt = true;
       setStatus('Přihlašuji...');
+      silentTimeoutId = setTimeout(() => {
+        if (!silentAttempt) return;
+        console.warn('Silent token request timed out (likely a blocked popup)');
+        clearSilentState();
+        setStatus('');
+        showSection('auth');
+      }, 8000);
       tokenClient.requestAccessToken({ prompt: 'none' });
     }
 
