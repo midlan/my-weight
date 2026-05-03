@@ -587,13 +587,13 @@
         const dtInput = document.createElement('input');
         dtInput.type = 'datetime-local';
         dtInput.value = toLocalInputValue(new Date(r.datetime));
-        dtInput.className = 'border-gray-300 rounded text-sm';
+        dtInput.className = 'bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
 
         const wInput = document.createElement('input');
         wInput.type = 'number';
         wInput.step = '0.1';
         wInput.value = String(r.weight);
-        wInput.className = 'w-20 border-gray-300 rounded text-sm';
+        wInput.className = 'w-24 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
 
         const fields = document.createElement('div');
         fields.className = 'flex items-center gap-2 flex-1 flex-wrap';
