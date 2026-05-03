@@ -521,7 +521,11 @@
 
     wipeBtn.addEventListener('click', wipeAllData);
 
-    const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' });
+    function formatCzechDateTime(d) {
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()} ${hh}:${mm}`;
+    }
 
     function prefillWeightInput() {
       const valid = records.filter(r => r && typeof r.weight === 'number' && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
@@ -617,7 +621,7 @@
       } else {
         const dateSpan = document.createElement('span');
         dateSpan.className = 'flex-1';
-        dateSpan.textContent = formatter.format(new Date(r.datetime));
+        dateSpan.textContent = formatCzechDateTime(new Date(r.datetime));
 
         const weightSpan = document.createElement('span');
         weightSpan.className = 'tabular-nums font-medium text-right min-w-[5rem]';
@@ -646,7 +650,7 @@
       const r = records[idx];
       if (!r) return;
       const label = r.datetime && !Number.isNaN(new Date(r.datetime).getTime())
-        ? `${formatter.format(new Date(r.datetime))} (${r.weight} kg)`
+        ? `${formatCzechDateTime(new Date(r.datetime))} (${r.weight} kg)`
         : `záznam ${idx}`;
       if (!confirm(`Smazat ${label}?`)) return;
       const removed = records.splice(idx, 1)[0];
