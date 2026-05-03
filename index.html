@@ -357,7 +357,7 @@
     });
 
     async function onSignIn() {
-      showSection('app');
+      showSection('loading');
       await loadRecords();
     }
 
@@ -486,6 +486,7 @@
         renderRecords();
         renderChart();
         prefillWeightInput();
+        showSection('app');
         if (needsRewrite && fileId) {
           setStatus('Aktualizuji formát dat...');
           await uploadRecords();
@@ -502,6 +503,7 @@
           setStatus('Přihlášení vypršelo, přihlaste se znovu.', 'error');
           return;
         }
+        showSection('app');
         setStatus('Chyba při načítání: ' + describeDriveError(err), 'error');
       }
     }
