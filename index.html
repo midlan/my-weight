@@ -191,6 +191,7 @@
 
     let editingIndex = -1;
     let isSavingEdit = false;
+    let deletingIndex = -1;
     let nowMode = true;
     let silentAttempt = false;
     let silentTimeoutId = null;
@@ -799,7 +800,20 @@
         const actions = document.createElement('div');
         actions.className = 'flex gap-1 shrink-0';
 
-        if (editingIndex === -1) {
+        if (idx === deletingIndex) {
+          const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500');
+          editBtn.disabled = true;
+          editBtn.classList.add('opacity-50');
+
+          const spinnerBtn = document.createElement('button');
+          spinnerBtn.type = 'button';
+          spinnerBtn.disabled = true;
+          spinnerBtn.title = 'Mažu...';
+          spinnerBtn.className = 'p-1 rounded text-red-600';
+          spinnerBtn.innerHTML = '<div class="w-4 h-4 border-2 border-gray-300 border-t-red-600 rounded-full animate-spin"></div>';
+
+          actions.append(editBtn, spinnerBtn);
+        } else if (editingIndex === -1 && deletingIndex === -1) {
           const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 hover:bg-blue-50 hover:text-blue-600');
           editBtn.addEventListener('click', () => { editingIndex = idx; renderRecords(); });
 
@@ -822,21 +836,22 @@
         ? `${formatCzechDateTime(new Date(r.datetime))} (${formatWeight(r.weight)} kg)`
         : `záznam ${idx}`;
       if (!confirm(`Smazat ${label}?`)) return;
-      const removed = records.splice(idx, 1)[0];
+      deletingIndex = idx;
       submitBtn.disabled = true;
       wipeBtn.disabled = true;
-      setStatus('Mažu záznam...');
+      renderRecords();
+      const removed = records.splice(idx, 1)[0];
       try {
         await uploadRecords();
+        deletingIndex = -1;
         renderRecords();
         renderChart();
         prefillWeightInput();
-        setStatus('');
       } catch (err) {
         console.error('Error deleting record', err);
         records.splice(idx, 0, removed);
+        deletingIndex = -1;
         renderRecords();
-        setStatus('');
         alert('Chyba při mazání: ' + describeDriveError(err));
       } finally {
         submitBtn.disabled = false;
