@@ -596,7 +596,6 @@
         currentPage = 0;
         renderRecords();
         renderChart();
-        prefillWeightInput();
         noteInput.value = '';
         if (!nowMode) {
           datetimeInput.value = toLocalInputValue(new Date(entry.datetime));
@@ -629,7 +628,6 @@
         editingIndex = -1;
         renderRecords();
         renderChart();
-        prefillWeightInput();
         showSection('app');
         alert('Data byla smazána.');
       } catch (err) {
@@ -833,7 +831,6 @@
         deletingIndex = -1;
         renderRecords();
         renderChart();
-        prefillWeightInput();
       } catch (err) {
         console.error('Error deleting record', err);
         records.splice(idx, 0, removed);
@@ -873,7 +870,6 @@
         editingIndex = -1;
         renderRecords();
         renderChart();
-        prefillWeightInput();
       } catch (err) {
         console.error('Error editing record', err);
         records[idx] = original;
