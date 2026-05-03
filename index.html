@@ -596,6 +596,10 @@
       return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()} ${d.getHours()}:${mm}`;
     }
 
+    function formatWeight(w) {
+      return Number(w).toLocaleString(undefined, { maximumFractionDigits: 10 });
+    }
+
     function prefillWeightInput() {
       const valid = records.filter(r => r && typeof r.weight === 'number' && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
       if (valid.length === 0) {
@@ -700,7 +704,7 @@
 
         const weightSpan = document.createElement('span');
         weightSpan.className = 'tabular-nums font-medium text-right min-w-[5rem]';
-        weightSpan.textContent = `${r.weight} kg`;
+        weightSpan.textContent = `${formatWeight(r.weight)} kg`;
 
         const actions = document.createElement('div');
         actions.className = 'flex gap-1 shrink-0';
@@ -725,7 +729,7 @@
       const r = records[idx];
       if (!r) return;
       const label = r.datetime && !Number.isNaN(new Date(r.datetime).getTime())
-        ? `${formatCzechDateTime(new Date(r.datetime))} (${r.weight} kg)`
+        ? `${formatCzechDateTime(new Date(r.datetime))} (${formatWeight(r.weight)} kg)`
         : `záznam ${idx}`;
       if (!confirm(`Smazat ${label}?`)) return;
       const removed = records.splice(idx, 1)[0];
