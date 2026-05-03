@@ -941,13 +941,23 @@
           responsive: true,
           maintainAspectRatio: false,
           animation: false,
-          plugins: { legend: { display: false } },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: (items) => {
+                  if (!items || items.length === 0) return '';
+                  const ts = items[0].parsed.x;
+                  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ts));
+                }
+              }
+            }
+          },
           scales: {
             x: {
               type: 'time',
               min: isFinite(fromTs) ? fromTs : undefined,
-              max: isFinite(toTs) ? toTs : undefined,
-              time: { tooltipFormat: 'PPp' }
+              max: isFinite(toTs) ? toTs : undefined
             },
             y: { title: { display: true, text: 'kg' } }
           }
