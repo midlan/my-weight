@@ -351,6 +351,9 @@
         alert('Neplatné datum/čas.');
         return;
       }
+      if (dt.getTime() > Date.now()) {
+        if (!confirm('Datum a čas záznamu je v budoucnosti. Opravdu uložit?')) return;
+      }
       await saveRecord({ datetime: dt.toISOString(), weight });
     });
 
