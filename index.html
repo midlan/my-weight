@@ -590,7 +590,9 @@
         renderRecords();
         renderChart();
         prefillWeightInput();
-        datetimeInput.value = toLocalInputValue(new Date());
+        if (!nowMode) {
+          datetimeInput.value = toLocalInputValue(new Date(entry.datetime));
+        }
         setStatus('');
       } catch (err) {
         console.error('Error saving record', err);
