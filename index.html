@@ -21,7 +21,11 @@
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
   <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl my-6">
     <h1 class="text-2xl font-bold mb-4 text-center">Moje váha</h1>
-    <div id="auth-section" class="text-center">
+    <div id="loading-section" class="text-center py-8">
+      <div class="inline-block w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin" role="status" aria-label="Načítám"></div>
+      <p class="text-sm text-gray-500 mt-2">Načítám...</p>
+    </div>
+    <div id="auth-section" class="hidden text-center">
       <button id="login-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
         Přihlásit přes Google
       </button>
@@ -115,8 +119,15 @@
 
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
+    const loadingSection = document.getElementById('loading-section');
     const authSection = document.getElementById('auth-section');
     const appSection = document.getElementById('app-section');
+
+    function showSection(name) {
+      loadingSection.classList.toggle('hidden', name !== 'loading');
+      authSection.classList.toggle('hidden', name !== 'auth');
+      appSection.classList.toggle('hidden', name !== 'app');
+    }
     const weightForm = document.getElementById('weight-form');
     const submitBtn = weightForm.querySelector('button[type="submit"]');
     const wipeBtn = document.getElementById('wipe-btn');
@@ -289,6 +300,7 @@
           if (tokenResponse.error) {
             if (!wasSilent) console.error('Token error', tokenResponse);
             setStatus('');
+            showSection('auth');
             return;
           }
           accessToken = tokenResponse.access_token;
@@ -333,8 +345,7 @@
       recordsLoaded = false;
       currentPage = 0;
       editingIndex = -1;
-      authSection.classList.remove('hidden');
-      appSection.classList.add('hidden');
+      showSection('auth');
       historyList.innerHTML = '';
       if (chart) {
         chart.destroy();
@@ -346,8 +357,7 @@
     });
 
     async function onSignIn() {
-      authSection.classList.add('hidden');
-      appSection.classList.remove('hidden');
+      showSection('app');
       await loadRecords();
     }
 
@@ -488,8 +498,7 @@
           clearStoredToken();
           accessToken = null;
           if (gapiReady) gapi.client.setToken(null);
-          appSection.classList.add('hidden');
-          authSection.classList.remove('hidden');
+          showSection('auth');
           setStatus('Přihlášení vypršelo, přihlaste se znovu.', 'error');
           return;
         }
