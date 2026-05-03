@@ -615,9 +615,13 @@
         li.append(fields, actions);
         setTimeout(() => wInput.focus(), 0);
       } else {
-        const text = document.createElement('span');
-        text.className = 'flex-1';
-        text.textContent = `${formatter.format(new Date(r.datetime))}: ${r.weight} kg`;
+        const dateSpan = document.createElement('span');
+        dateSpan.className = 'flex-1';
+        dateSpan.textContent = formatter.format(new Date(r.datetime));
+
+        const weightSpan = document.createElement('span');
+        weightSpan.className = 'tabular-nums font-medium text-right min-w-[5rem]';
+        weightSpan.textContent = `${r.weight} kg`;
 
         const actions = document.createElement('div');
         actions.className = 'flex gap-1 shrink-0';
@@ -632,7 +636,7 @@
           actions.append(editBtn, delBtn);
         }
 
-        li.append(text, actions);
+        li.append(dateSpan, weightSpan, actions);
       }
       return li;
     }
