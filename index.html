@@ -343,20 +343,17 @@
           clearSilentState();
           if (tokenResponse.error) {
             if (!wasSilent) console.error('Token error', tokenResponse);
-            setStatus('');
             showSection('auth');
             return;
           }
           accessToken = tokenResponse.access_token;
           storeToken(accessToken, parseInt(tokenResponse.expires_in, 10));
           if (gapiReady) gapi.client.setToken({ access_token: accessToken });
-          setStatus('');
           onSignIn();
         },
         error_callback: (err) => {
           console.warn('Token client error', err);
           clearSilentState();
-          setStatus('');
           showSection('auth');
         }
       });
@@ -377,12 +374,10 @@
         return;
       }
       silentAttempt = true;
-      setStatus('Přihlašuji...');
       silentTimeoutId = setTimeout(() => {
         if (!silentAttempt) return;
         console.warn('Silent token request timed out (likely a blocked popup)');
         clearSilentState();
-        setStatus('');
         showSection('auth');
       }, 8000);
       tokenClient.requestAccessToken({ prompt: 'none' });
@@ -553,7 +548,6 @@
     }
 
     async function loadRecords() {
-      setStatus('Načítám...');
       try {
         const file = await findAppDataFile();
         let needsRewrite = false;
@@ -569,15 +563,13 @@
           records = [];
         }
         recordsLoaded = true;
+        if (needsRewrite && fileId) {
+          await uploadRecords();
+        }
         renderRecords();
         renderChart();
         prefillWeightInput();
         showSection('app');
-        if (needsRewrite && fileId) {
-          setStatus('Aktualizuji formát dat...');
-          await uploadRecords();
-        }
-        setStatus('');
       } catch (err) {
         console.error('Error loading records', err);
         const status = err?.status || err?.result?.error?.code;
@@ -589,8 +581,14 @@
           alert('Přihlášení vypršelo, přihlaste se znovu.');
           return;
         }
+        if (!recordsLoaded) {
+          records = [];
+          recordsLoaded = true;
+        }
+        renderRecords();
+        renderChart();
+        prefillWeightInput();
         showSection('app');
-        setStatus('');
         alert('Chyba při načítání: ' + describeDriveError(err));
       }
     }
