@@ -530,7 +530,13 @@
     }
 
     async function wipeAllData() {
-      if (!confirm('Opravdu chcete smazat VŠECHNA data o vaší váze? Tuto akci nelze vrátit zpět.')) return;
+      const expected = 'smazat vše';
+      const typed = prompt(`Pro nevratné smazání VŠECH dat napište přesně: ${expected}`);
+      if (typed === null) return;
+      if (typed.trim().toLowerCase() !== expected) {
+        alert('Zadaný text se neshoduje, data nebyla smazána.');
+        return;
+      }
       submitBtn.disabled = true;
       wipeBtn.disabled = true;
       setStatus('Mažu data...');
