@@ -52,6 +52,10 @@
           <label for="weight" class="block text-sm font-medium">Hmotnost (kg)</label>
           <input type="number" step="0.1" id="weight" class="mt-1 block w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm" />
         </div>
+        <div>
+          <label for="note" class="block text-sm font-medium">Poznámka</label>
+          <input type="text" id="note" class="mt-1 block w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm" />
+        </div>
         <button type="submit" class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
           Uložit
         </button>
@@ -147,6 +151,7 @@
     const datetimeInput = document.getElementById('datetime');
     const nowBtn = document.getElementById('now-btn');
     const weightInput = document.getElementById('weight');
+    const noteInput = document.getElementById('note');
     const statusEl = document.getElementById('status');
     const paginationEl = document.getElementById('pagination');
     const prevPageBtn = document.getElementById('prev-page');
@@ -459,7 +464,10 @@
           alert('Záznam s tímto datem již existuje.');
           return;
         }
-        await saveRecord({ datetime: datetimeIso, weight });
+        const note = noteInput.value.trim();
+        const entry = { datetime: datetimeIso, weight };
+        if (note) entry.note = note;
+        await saveRecord(entry);
       } finally {
         submitBtn.disabled = false;
       }
@@ -491,14 +499,19 @@
       const normalized = [];
       for (const r of rawRecords) {
         if (!r || typeof r.weight !== 'number') { migrated = true; continue; }
+        const note = (typeof r.note === 'string' && r.note.length > 0) ? r.note : null;
         if (typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime())) {
-          normalized.push({ datetime: r.datetime, weight: r.weight });
+          const rec = { datetime: r.datetime, weight: r.weight };
+          if (note) rec.note = note;
+          normalized.push(rec);
           continue;
         }
         if (typeof r.date === 'string') {
           const dt = new Date(r.date + 'T12:00:00');
           if (!Number.isNaN(dt.getTime())) {
-            normalized.push({ datetime: dt.toISOString(), weight: r.weight });
+            const rec = { datetime: dt.toISOString(), weight: r.weight };
+            if (note) rec.note = note;
+            normalized.push(rec);
             migrated = true;
             continue;
           }
@@ -590,6 +603,7 @@
         renderRecords();
         renderChart();
         prefillWeightInput();
+        noteInput.value = '';
         if (!nowMode) {
           datetimeInput.value = toLocalInputValue(new Date(entry.datetime));
         }
@@ -719,7 +733,13 @@
         const dtInput = document.createElement('input');
         dtInput.type = 'datetime-local';
         dtInput.value = toLocalInputValue(new Date(r.datetime));
-        dtInput.className = 'flex-1 min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
+        dtInput.className = 'min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
+
+        const editNoteInput = document.createElement('input');
+        editNoteInput.type = 'text';
+        editNoteInput.value = r.note || '';
+        editNoteInput.placeholder = 'Poznámka';
+        editNoteInput.className = 'flex-1 min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
 
         const wInput = document.createElement('input');
         wInput.type = 'number';
@@ -730,18 +750,19 @@
         let actions;
         if (isSavingEdit) {
           dtInput.disabled = true;
+          editNoteInput.disabled = true;
           wInput.disabled = true;
           actions = document.createElement('span');
           actions.className = 'text-sm text-gray-500 px-2 shrink-0 whitespace-nowrap';
           actions.textContent = 'Ukládám...';
         } else {
           const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 hover:bg-green-50');
-          saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value));
+          saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value, editNoteInput.value));
 
           const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 hover:bg-gray-200');
           cancelBtn.addEventListener('click', () => { editingIndex = -1; renderRecords(); });
 
-          [dtInput, wInput].forEach(inp => {
+          [dtInput, editNoteInput, wInput].forEach(inp => {
             inp.addEventListener('keydown', (e) => {
               if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
               else if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
@@ -754,11 +775,18 @@
           setTimeout(() => wInput.focus(), 0);
         }
 
-        li.append(dtInput, wInput, actions);
+        li.append(dtInput, editNoteInput, wInput, actions);
       } else {
         const dateSpan = document.createElement('span');
-        dateSpan.className = 'flex-1';
+        dateSpan.className = 'shrink-0';
         dateSpan.textContent = formatCzechDateTime(new Date(r.datetime));
+
+        const noteSpan = document.createElement('span');
+        noteSpan.className = 'flex-1 min-w-0 text-sm text-gray-600 truncate';
+        if (r.note) {
+          noteSpan.textContent = r.note;
+          noteSpan.title = r.note;
+        }
 
         const weightSpan = document.createElement('span');
         weightSpan.className = 'tabular-nums font-medium text-right min-w-[5rem]';
@@ -777,7 +805,7 @@
           actions.append(editBtn, delBtn);
         }
 
-        li.append(dateSpan, weightSpan, actions);
+        li.append(dateSpan, noteSpan, weightSpan, actions);
       }
       return li;
     }
@@ -811,7 +839,7 @@
       }
     }
 
-    async function saveEdit(idx, dtValue, weightValue) {
+    async function saveEdit(idx, dtValue, weightValue, noteValue) {
       if (idx < 0 || idx >= records.length) return;
       if (!dtValue) { alert('Vyplňte datum/čas.'); return; }
       const dt = new Date(dtValue);
@@ -823,8 +851,11 @@
         alert('Záznam s tímto datem již existuje.');
         return;
       }
+      const note = (noteValue || '').trim();
       const original = records[idx];
-      records[idx] = { datetime: datetimeIso, weight: w };
+      const updated = { datetime: datetimeIso, weight: w };
+      if (note) updated.note = note;
+      records[idx] = updated;
       isSavingEdit = true;
       renderRecords();
       submitBtn.disabled = true;
@@ -844,10 +875,11 @@
         const failedLi = historyList.querySelector(`li[data-idx="${idx}"]`);
         if (failedLi) {
           const inps = failedLi.querySelectorAll('input');
-          if (inps.length >= 2) {
+          if (inps.length >= 3) {
             inps[0].value = dtValue;
-            inps[1].value = weightValue;
-            inps[1].focus();
+            inps[1].value = noteValue || '';
+            inps[2].value = weightValue;
+            inps[2].focus();
           }
         }
         alert('Chyba při ukládání: ' + describeDriveError(err));

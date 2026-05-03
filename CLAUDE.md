@@ -50,7 +50,8 @@ This is the part most likely to bite a future change, so read carefully.
 {
   "version": 1,
   "records": [
-    { "datetime": "2026-05-02T07:14:00.000Z", "weight": 72.5 }
+    { "datetime": "2026-05-02T07:14:00.000Z", "weight": 72.5 },
+    { "datetime": "2026-05-03T07:31:00.000Z", "weight": 72.3, "note": "po běhu" }
   ]
 }
 ```
@@ -59,6 +60,12 @@ This is the part most likely to bite a future change, so read carefully.
   The `datetime-local` input value is converted to UTC at save time;
   display is converted back via `Intl.DateTimeFormat` at render time.
 - `weight` is a number in kilograms.
+- `note` is an **optional** non-empty string. Records without a note
+  omit the key entirely (no empty string), so old records and new
+  records-without-notes are byte-identical to the previous schema —
+  no version bump or rewrite needed when the field was introduced.
+- Datetime is the unique key (matched at minute precision); a record's
+  weight or note can change but two records can't share a minute.
 - The schema version constant is `SCHEMA_VERSION` near the top of the
   inline `<script>`.
 
