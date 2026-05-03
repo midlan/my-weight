@@ -595,7 +595,8 @@
     }
 
     async function saveRecord(entry) {
-      setStatus('Ukládám...');
+      const originalBtnText = submitBtn.textContent;
+      submitBtn.textContent = 'Ukládám...';
       records.push(entry);
       try {
         await uploadRecords();
@@ -607,11 +608,12 @@
         if (!nowMode) {
           datetimeInput.value = toLocalInputValue(new Date(entry.datetime));
         }
-        setStatus('');
       } catch (err) {
         console.error('Error saving record', err);
         records.pop();
         setStatus('Chyba při ukládání: ' + describeDriveError(err), 'error');
+      } finally {
+        submitBtn.textContent = originalBtnText;
       }
     }
 
