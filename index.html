@@ -394,38 +394,44 @@
 
     weightForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!accessToken) {
-        alert('Nejste přihlášeni.');
-        return;
+      if (submitBtn.disabled) return;
+      submitBtn.disabled = true;
+      try {
+        if (!accessToken) {
+          alert('Nejste přihlášeni.');
+          return;
+        }
+        if (!gapiReady || !recordsLoaded) {
+          alert('Data se ještě načítají, zkuste to za chvíli.');
+          return;
+        }
+        if (editingIndex !== -1) {
+          alert('Dokončete prosím úpravu záznamu.');
+          return;
+        }
+        const local = datetimeInput.value;
+        const weight = parseFloat(weightInput.value);
+        if (!local || Number.isNaN(weight)) {
+          alert('Vyplňte datum/čas a hmotnost.');
+          return;
+        }
+        const dt = new Date(local);
+        if (Number.isNaN(dt.getTime())) {
+          alert('Neplatné datum/čas.');
+          return;
+        }
+        if (dt.getTime() > Date.now()) {
+          if (!confirm('Datum a čas záznamu je v budoucnosti. Opravdu uložit?')) return;
+        }
+        const datetimeIso = dt.toISOString();
+        if (findDuplicateRecord(datetimeIso, weight) !== -1) {
+          alert('Záznam s tímto datem a hmotností již existuje.');
+          return;
+        }
+        await saveRecord({ datetime: datetimeIso, weight });
+      } finally {
+        submitBtn.disabled = false;
       }
-      if (!gapiReady || !recordsLoaded) {
-        alert('Data se ještě načítají, zkuste to za chvíli.');
-        return;
-      }
-      if (editingIndex !== -1) {
-        alert('Dokončete prosím úpravu záznamu.');
-        return;
-      }
-      const local = datetimeInput.value;
-      const weight = parseFloat(weightInput.value);
-      if (!local || Number.isNaN(weight)) {
-        alert('Vyplňte datum/čas a hmotnost.');
-        return;
-      }
-      const dt = new Date(local);
-      if (Number.isNaN(dt.getTime())) {
-        alert('Neplatné datum/čas.');
-        return;
-      }
-      if (dt.getTime() > Date.now()) {
-        if (!confirm('Datum a čas záznamu je v budoucnosti. Opravdu uložit?')) return;
-      }
-      const datetimeIso = dt.toISOString();
-      if (findDuplicateRecord(datetimeIso, weight) !== -1) {
-        alert('Záznam s tímto datem a hmotností již existuje.');
-        return;
-      }
-      await saveRecord({ datetime: datetimeIso, weight });
     });
 
     async function findAppDataFile() {
@@ -545,7 +551,6 @@
     }
 
     async function saveRecord(entry) {
-      submitBtn.disabled = true;
       setStatus('Ukládám...');
       records.push(entry);
       try {
@@ -560,8 +565,6 @@
         console.error('Error saving record', err);
         records.pop();
         setStatus('Chyba při ukládání: ' + describeDriveError(err), 'error');
-      } finally {
-        submitBtn.disabled = false;
       }
     }
 
