@@ -43,7 +43,10 @@
       <form id="weight-form" class="space-y-4">
         <div>
           <label for="datetime" class="block text-sm font-medium">Datum a čas</label>
-          <input type="datetime-local" id="datetime" class="mt-1 block w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm" />
+          <button type="button" id="now-btn" title="Klikněte pro nastavení vlastního data a času" class="mt-1 block w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm text-left text-gray-700 hover:bg-gray-50">
+            teď
+          </button>
+          <input type="datetime-local" id="datetime" class="mt-1 hidden w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm" />
         </div>
         <div>
           <label for="weight" class="block text-sm font-medium">Hmotnost (kg)</label>
@@ -142,6 +145,7 @@
     const wipeBtn = document.getElementById('wipe-btn');
     const historyList = document.getElementById('history-list');
     const datetimeInput = document.getElementById('datetime');
+    const nowBtn = document.getElementById('now-btn');
     const weightInput = document.getElementById('weight');
     const statusEl = document.getElementById('status');
     const paginationEl = document.getElementById('pagination');
@@ -176,6 +180,7 @@
 
     let editingIndex = -1;
     let isSavingEdit = false;
+    let nowMode = true;
     let silentAttempt = false;
     let silentTimeoutId = null;
     let currentPreset = '7d';
@@ -221,11 +226,27 @@
     const ICON_CANCEL = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>';
 
     window.onload = () => {
-      datetimeInput.value = toLocalInputValue(new Date());
       applyRangePreset(loadStoredPreset());
       initGapi();
       initGis();
     };
+
+    function activateDatetimeInput() {
+      nowMode = false;
+      datetimeInput.value = toLocalInputValue(new Date());
+      nowBtn.classList.add('hidden');
+      datetimeInput.classList.remove('hidden');
+      datetimeInput.focus();
+    }
+
+    function resetToNowMode() {
+      nowMode = true;
+      datetimeInput.value = '';
+      datetimeInput.classList.add('hidden');
+      nowBtn.classList.remove('hidden');
+    }
+
+    nowBtn.addEventListener('click', activateDatetimeInput);
 
     function toDateInputValue(d) {
       const pad = (n) => String(n).padStart(2, '0');
@@ -376,6 +397,7 @@
       recordsLoaded = false;
       currentPage = 0;
       editingIndex = -1;
+      resetToNowMode();
       showSection('auth');
       historyList.innerHTML = '';
       if (chart) {
@@ -409,21 +431,30 @@
           alert('Dokončete prosím úpravu záznamu.');
           return;
         }
-        const local = datetimeInput.value;
         const weight = parseFloat(weightInput.value);
-        if (!local || Number.isNaN(weight)) {
-          alert('Vyplňte datum/čas a hmotnost.');
+        if (Number.isNaN(weight)) {
+          alert('Vyplňte hmotnost.');
           return;
         }
-        const dt = new Date(local);
-        if (Number.isNaN(dt.getTime())) {
-          alert('Neplatné datum/čas.');
-          return;
+        let datetimeIso;
+        if (nowMode) {
+          datetimeIso = new Date().toISOString();
+        } else {
+          const local = datetimeInput.value;
+          if (!local) {
+            alert('Vyplňte datum/čas.');
+            return;
+          }
+          const dt = new Date(local);
+          if (Number.isNaN(dt.getTime())) {
+            alert('Neplatné datum/čas.');
+            return;
+          }
+          if (dt.getTime() > Date.now()) {
+            if (!confirm('Datum a čas záznamu je v budoucnosti. Opravdu uložit?')) return;
+          }
+          datetimeIso = dt.toISOString();
         }
-        if (dt.getTime() > Date.now()) {
-          if (!confirm('Datum a čas záznamu je v budoucnosti. Opravdu uložit?')) return;
-        }
-        const datetimeIso = dt.toISOString();
         if (findDuplicateRecord(datetimeIso, weight) !== -1) {
           alert('Záznam s tímto datem a hmotností již existuje.');
           return;
