@@ -145,6 +145,41 @@
     const chartEmptyEl = document.getElementById('chart-empty');
     let chart = null;
 
+    let editingIndex = -1;
+    let silentAttempt = false;
+    const initState = { gapi: false, gis: false };
+
+    const TOKEN_STORAGE_KEY = 'my-weight:token';
+
+    function loadStoredToken() {
+      try {
+        const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.token !== 'string' || typeof parsed.expiresAt !== 'number') return null;
+        if (Date.now() >= parsed.expiresAt - 60_000) return null;
+        return parsed.token;
+      } catch { return null; }
+    }
+
+    function storeToken(token, expiresInSec) {
+      try {
+        localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({
+          token,
+          expiresAt: Date.now() + (expiresInSec || 3600) * 1000,
+        }));
+      } catch {}
+    }
+
+    function clearStoredToken() {
+      try { localStorage.removeItem(TOKEN_STORAGE_KEY); } catch {}
+    }
+
+    const ICON_EDIT = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>';
+    const ICON_TRASH = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>';
+    const ICON_CHECK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>';
+    const ICON_CANCEL = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>';
+
     window.onload = () => {
       datetimeInput.value = toLocalInputValue(new Date());
       applyRangePreset('1y');
@@ -213,6 +248,8 @@
           discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
         });
         gapiReady = true;
+        initState.gapi = true;
+        checkReady();
       });
     }
 
@@ -222,27 +259,55 @@
         scope: SCOPE,
         ux_mode: 'popup',
         callback: (tokenResponse) => {
+          const wasSilent = silentAttempt;
+          silentAttempt = false;
           if (tokenResponse.error) {
-            console.error('Token error', tokenResponse);
+            if (!wasSilent) console.error('Token error', tokenResponse);
+            setStatus('');
             return;
           }
           accessToken = tokenResponse.access_token;
+          storeToken(accessToken, parseInt(tokenResponse.expires_in, 10));
+          if (gapiReady) gapi.client.setToken({ access_token: accessToken });
+          setStatus('');
           onSignIn();
         }
       });
+      initState.gis = true;
+      checkReady();
+    }
+
+    function checkReady() {
+      if (initState.gapi && initState.gis) attemptAutoLogin();
+    }
+
+    function attemptAutoLogin() {
+      const cached = loadStoredToken();
+      if (cached) {
+        accessToken = cached;
+        gapi.client.setToken({ access_token: accessToken });
+        onSignIn();
+        return;
+      }
+      silentAttempt = true;
+      setStatus('Přihlašuji...');
+      tokenClient.requestAccessToken({ prompt: 'none' });
     }
 
     loginBtn.addEventListener('click', () => {
-      if (!accessToken) tokenClient.requestAccessToken({ prompt: 'consent' });
+      if (!accessToken) tokenClient.requestAccessToken({});
     });
 
     logoutBtn.addEventListener('click', () => {
       if (accessToken) google.accounts.oauth2.revoke(accessToken);
+      clearStoredToken();
+      if (gapiReady) gapi.client.setToken(null);
       accessToken = null;
       records = [];
       fileId = null;
       recordsLoaded = false;
       currentPage = 0;
+      editingIndex = -1;
       authSection.classList.remove('hidden');
       appSection.classList.add('hidden');
       historyList.innerHTML = '';
@@ -269,6 +334,10 @@
       }
       if (!gapiReady || !recordsLoaded) {
         alert('Data se ještě načítají, zkuste to za chvíli.');
+        return;
+      }
+      if (editingIndex !== -1) {
+        alert('Dokončete prosím úpravu záznamu.');
         return;
       }
       const local = datetimeInput.value;
@@ -385,6 +454,16 @@
         setStatus('');
       } catch (err) {
         console.error('Error loading records', err);
+        const status = err?.status || err?.result?.error?.code;
+        if (status === 401) {
+          clearStoredToken();
+          accessToken = null;
+          if (gapiReady) gapi.client.setToken(null);
+          appSection.classList.add('hidden');
+          authSection.classList.remove('hidden');
+          setStatus('Přihlášení vypršelo, přihlaste se znovu.', 'error');
+          return;
+        }
         setStatus('Chyba při načítání: ' + describeDriveError(err), 'error');
       }
     }
@@ -422,6 +501,7 @@
         fileId = null;
         records = [];
         currentPage = 0;
+        editingIndex = -1;
         renderRecords();
         renderChart();
         setStatus('Data byla smazána.');
@@ -448,20 +528,17 @@
         paginationEl.classList.add('hidden');
         return;
       }
-      const valid = records.filter(r => r && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
-      const sorted = valid.slice().sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
+      const valid = records
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => r && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
+      const sorted = valid.slice().sort((a, b) => new Date(b.r.datetime) - new Date(a.r.datetime));
       const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
       if (currentPage >= totalPages) currentPage = totalPages - 1;
       if (currentPage < 0) currentPage = 0;
       const start = currentPage * pageSize;
       const pageItems = sorted.slice(start, start + pageSize);
       const frag = document.createDocumentFragment();
-      pageItems.forEach(e => {
-        const li = document.createElement('li');
-        li.className = 'p-2 bg-gray-50 rounded flex justify-between';
-        li.textContent = `${formatter.format(new Date(e.datetime))}: ${e.weight} kg`;
-        frag.appendChild(li);
-      });
+      pageItems.forEach(({ r, i }) => frag.appendChild(buildHistoryRow(r, i)));
       historyList.appendChild(frag);
 
       if (sorted.length > ALLOWED_PAGE_SIZES[0]) {
@@ -471,6 +548,134 @@
         nextPageBtn.disabled = currentPage >= totalPages - 1;
       } else {
         paginationEl.classList.add('hidden');
+      }
+    }
+
+    function iconButton(svg, title, colorClass) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.title = title;
+      b.className = `p-1 rounded ${colorClass}`;
+      b.innerHTML = svg;
+      return b;
+    }
+
+    function buildHistoryRow(r, idx) {
+      const li = document.createElement('li');
+      li.className = 'p-2 bg-gray-50 rounded flex items-center justify-between gap-2';
+
+      if (idx === editingIndex) {
+        const dtInput = document.createElement('input');
+        dtInput.type = 'datetime-local';
+        dtInput.value = toLocalInputValue(new Date(r.datetime));
+        dtInput.className = 'border-gray-300 rounded text-sm';
+
+        const wInput = document.createElement('input');
+        wInput.type = 'number';
+        wInput.step = '0.1';
+        wInput.value = String(r.weight);
+        wInput.className = 'w-20 border-gray-300 rounded text-sm';
+
+        const fields = document.createElement('div');
+        fields.className = 'flex items-center gap-2 flex-1 flex-wrap';
+        fields.append(dtInput, wInput);
+
+        const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 hover:bg-green-50');
+        saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value));
+
+        const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 hover:bg-gray-200');
+        cancelBtn.addEventListener('click', () => { editingIndex = -1; renderRecords(); });
+
+        [dtInput, wInput].forEach(inp => {
+          inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
+            else if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
+          });
+        });
+
+        const actions = document.createElement('div');
+        actions.className = 'flex gap-1 shrink-0';
+        actions.append(saveBtn, cancelBtn);
+
+        li.append(fields, actions);
+        setTimeout(() => wInput.focus(), 0);
+      } else {
+        const text = document.createElement('span');
+        text.className = 'flex-1';
+        text.textContent = `${formatter.format(new Date(r.datetime))}: ${r.weight} kg`;
+
+        const actions = document.createElement('div');
+        actions.className = 'flex gap-1 shrink-0';
+
+        if (editingIndex === -1) {
+          const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 hover:bg-blue-50 hover:text-blue-600');
+          editBtn.addEventListener('click', () => { editingIndex = idx; renderRecords(); });
+
+          const delBtn = iconButton(ICON_TRASH, 'Smazat', 'text-gray-500 hover:bg-red-50 hover:text-red-600');
+          delBtn.addEventListener('click', () => deleteRecord(idx));
+
+          actions.append(editBtn, delBtn);
+        }
+
+        li.append(text, actions);
+      }
+      return li;
+    }
+
+    async function deleteRecord(idx) {
+      if (idx < 0 || idx >= records.length) return;
+      const r = records[idx];
+      if (!r) return;
+      const label = r.datetime && !Number.isNaN(new Date(r.datetime).getTime())
+        ? `${formatter.format(new Date(r.datetime))} (${r.weight} kg)`
+        : `záznam ${idx}`;
+      if (!confirm(`Smazat ${label}?`)) return;
+      const removed = records.splice(idx, 1)[0];
+      submitBtn.disabled = true;
+      wipeBtn.disabled = true;
+      setStatus('Mažu záznam...');
+      try {
+        await uploadRecords();
+        renderRecords();
+        renderChart();
+        setStatus('');
+      } catch (err) {
+        console.error('Error deleting record', err);
+        records.splice(idx, 0, removed);
+        renderRecords();
+        setStatus('Chyba při mazání: ' + describeDriveError(err), 'error');
+      } finally {
+        submitBtn.disabled = false;
+        wipeBtn.disabled = false;
+      }
+    }
+
+    async function saveEdit(idx, dtValue, weightValue) {
+      if (idx < 0 || idx >= records.length) return;
+      if (!dtValue) { alert('Vyplňte datum/čas.'); return; }
+      const dt = new Date(dtValue);
+      if (Number.isNaN(dt.getTime())) { alert('Neplatné datum/čas.'); return; }
+      const w = parseFloat(weightValue);
+      if (Number.isNaN(w)) { alert('Neplatná hmotnost.'); return; }
+      const original = records[idx];
+      records[idx] = { datetime: dt.toISOString(), weight: w };
+      submitBtn.disabled = true;
+      wipeBtn.disabled = true;
+      setStatus('Ukládám...');
+      try {
+        await uploadRecords();
+        editingIndex = -1;
+        renderRecords();
+        renderChart();
+        setStatus('');
+      } catch (err) {
+        console.error('Error editing record', err);
+        records[idx] = original;
+        renderRecords();
+        setStatus('Chyba při ukládání: ' + describeDriveError(err), 'error');
+      } finally {
+        submitBtn.disabled = false;
+        wipeBtn.disabled = false;
       }
     }
 
