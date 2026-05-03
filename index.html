@@ -780,12 +780,28 @@
       const fromTs = fromVal ? new Date(fromVal + 'T00:00:00').getTime() : -Infinity;
       const toTs = toVal ? new Date(toVal + 'T23:59:59.999').getTime() : Infinity;
 
-      const points = records
+      const allPoints = records
         .map(r => ({ x: r && typeof r.datetime === 'string' ? new Date(r.datetime).getTime() : NaN, y: r ? r.weight : NaN }))
-        .filter(p => !Number.isNaN(p.x) && !Number.isNaN(p.y) && p.x >= fromTs && p.x <= toTs)
+        .filter(p => !Number.isNaN(p.x) && !Number.isNaN(p.y))
         .sort((a, b) => a.x - b.x);
 
-      if (points.length === 0) {
+      const inRange = allPoints.filter(p => p.x >= fromTs && p.x <= toTs);
+      let chartPoints = inRange;
+      if (inRange.length > 0) {
+        let before = null;
+        let after = null;
+        for (const p of allPoints) {
+          if (p.x < fromTs) before = p;
+          else if (p.x > toTs) { after = p; break; }
+        }
+        chartPoints = [
+          ...(before ? [before] : []),
+          ...inRange,
+          ...(after ? [after] : []),
+        ];
+      }
+
+      if (inRange.length === 0) {
         chartEmptyEl.classList.remove('hidden');
       } else {
         chartEmptyEl.classList.add('hidden');
@@ -794,11 +810,11 @@
       const data = {
         datasets: [{
           label: 'Hmotnost (kg)',
-          data: points,
+          data: chartPoints,
           borderColor: '#16a34a',
           backgroundColor: 'rgba(22, 163, 74, 0.1)',
           tension: 0.2,
-          pointRadius: points.length > 200 ? 0 : 3,
+          pointRadius: chartPoints.length > 200 ? 0 : 3,
           spanGaps: true,
         }]
       };
