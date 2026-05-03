@@ -60,7 +60,6 @@
           Uložit
         </button>
       </form>
-      <p id="status" class="text-sm text-gray-500 mt-2 hidden"></p>
       <hr class="my-4" />
       <h2 class="text-xl font-semibold mb-2">Graf</h2>
       <div class="flex flex-wrap gap-1 mb-2">
@@ -158,7 +157,6 @@
     const nowBtn = document.getElementById('now-btn');
     const weightInput = document.getElementById('weight');
     const noteInput = document.getElementById('note');
-    const statusEl = document.getElementById('status');
     const paginationEl = document.getElementById('pagination');
     const prevPageBtn = document.getElementById('prev-page');
     const nextPageBtn = document.getElementById('next-page');
@@ -310,16 +308,6 @@
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
-    function setStatus(text) {
-      if (!text) {
-        statusEl.classList.add('hidden');
-        statusEl.textContent = '';
-        return;
-      }
-      statusEl.textContent = text;
-      statusEl.className = 'text-sm mt-2 text-gray-500';
-    }
-
     function describeDriveError(err) {
       const reason = err?.result?.error?.errors?.[0]?.reason || err?.error?.errors?.[0]?.reason;
       const message = err?.result?.error?.message || err?.error?.message || err?.message || 'neznámá chyba';
@@ -413,7 +401,6 @@
       }
       chartEmptyEl.classList.add('hidden');
       applyRangePreset(loadStoredPreset());
-      setStatus('');
     });
 
     async function onSignIn() {
