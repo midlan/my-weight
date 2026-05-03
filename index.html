@@ -586,17 +586,13 @@
         const dtInput = document.createElement('input');
         dtInput.type = 'datetime-local';
         dtInput.value = toLocalInputValue(new Date(r.datetime));
-        dtInput.className = 'bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
+        dtInput.className = 'flex-1 min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
 
         const wInput = document.createElement('input');
         wInput.type = 'number';
         wInput.step = '0.1';
         wInput.value = String(r.weight);
-        wInput.className = 'w-24 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
-
-        const fields = document.createElement('div');
-        fields.className = 'flex items-center gap-2 flex-1 flex-wrap';
-        fields.append(dtInput, wInput);
+        wInput.className = 'w-24 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm text-right';
 
         const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 hover:bg-green-50');
         saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value));
@@ -615,7 +611,7 @@
         actions.className = 'flex gap-1 shrink-0';
         actions.append(saveBtn, cancelBtn);
 
-        li.append(fields, actions);
+        li.append(dtInput, wInput, actions);
         setTimeout(() => wInput.focus(), 0);
       } else {
         const dateSpan = document.createElement('span');
