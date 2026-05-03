@@ -303,14 +303,14 @@
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
-    function setStatus(text, tone = 'info') {
+    function setStatus(text) {
       if (!text) {
         statusEl.classList.add('hidden');
         statusEl.textContent = '';
         return;
       }
       statusEl.textContent = text;
-      statusEl.className = 'text-sm mt-2 ' + (tone === 'error' ? 'text-red-600' : 'text-gray-500');
+      statusEl.className = 'text-sm mt-2 text-gray-500';
     }
 
     function describeDriveError(err) {
@@ -586,11 +586,12 @@
           accessToken = null;
           if (gapiReady) gapi.client.setToken(null);
           showSection('auth');
-          setStatus('Přihlášení vypršelo, přihlaste se znovu.', 'error');
+          alert('Přihlášení vypršelo, přihlaste se znovu.');
           return;
         }
         showSection('app');
-        setStatus('Chyba při načítání: ' + describeDriveError(err), 'error');
+        setStatus('');
+        alert('Chyba při načítání: ' + describeDriveError(err));
       }
     }
 
@@ -611,7 +612,7 @@
       } catch (err) {
         console.error('Error saving record', err);
         records.pop();
-        setStatus('Chyba při ukládání: ' + describeDriveError(err), 'error');
+        alert('Chyba při ukládání: ' + describeDriveError(err));
       } finally {
         submitBtn.textContent = originalBtnText;
       }
@@ -639,10 +640,12 @@
         renderRecords();
         renderChart();
         prefillWeightInput();
-        setStatus('Data byla smazána.');
+        setStatus('');
+        alert('Data byla smazána.');
       } catch (err) {
         console.error('Error wiping data', err);
-        setStatus('Chyba při mazání: ' + describeDriveError(err), 'error');
+        setStatus('');
+        alert('Chyba při mazání: ' + describeDriveError(err));
       } finally {
         submitBtn.disabled = false;
         wipeBtn.disabled = false;
@@ -834,7 +837,8 @@
         console.error('Error deleting record', err);
         records.splice(idx, 0, removed);
         renderRecords();
-        setStatus('Chyba při mazání: ' + describeDriveError(err), 'error');
+        setStatus('');
+        alert('Chyba při mazání: ' + describeDriveError(err));
       } finally {
         submitBtn.disabled = false;
         wipeBtn.disabled = false;
