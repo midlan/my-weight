@@ -644,11 +644,16 @@
       return Number(w).toLocaleString(undefined, { maximumFractionDigits: 10 });
     }
 
+    function isoToMinute(iso) {
+      return typeof iso === 'string' ? iso.substring(0, 16) : '';
+    }
+
     function findDuplicateRecord(datetimeIso, weight, excludeIdx = -1) {
+      const targetMin = isoToMinute(datetimeIso);
       for (let i = 0; i < records.length; i++) {
         if (i === excludeIdx) continue;
         const r = records[i];
-        if (r && r.datetime === datetimeIso && r.weight === weight) return i;
+        if (r && isoToMinute(r.datetime) === targetMin && r.weight === weight) return i;
       }
       return -1;
     }
