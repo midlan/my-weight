@@ -148,6 +148,7 @@
     let editingIndex = -1;
     let isSavingEdit = false;
     let silentAttempt = false;
+    let currentPreset = '1y';
     const initState = { gapi: false, gis: false };
 
     const TOKEN_STORAGE_KEY = 'my-weight:token';
@@ -217,6 +218,19 @@
       }
       rangeFromInput.value = toDateInputValue(from);
       rangeToInput.value = toDateInputValue(to);
+      currentPreset = preset;
+      updatePresetButtons();
+    }
+
+    function updatePresetButtons() {
+      document.querySelectorAll('.range-btn').forEach(btn => {
+        const active = btn.dataset.range === currentPreset;
+        btn.classList.toggle('bg-blue-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('hover:bg-blue-700', active);
+        btn.classList.toggle('bg-gray-200', !active);
+        btn.classList.toggle('hover:bg-gray-300', !active);
+      });
     }
 
     function toLocalInputValue(d) {
@@ -738,8 +752,16 @@
       });
     });
 
-    rangeFromInput.addEventListener('change', renderChart);
-    rangeToInput.addEventListener('change', renderChart);
+    rangeFromInput.addEventListener('change', () => {
+      currentPreset = null;
+      updatePresetButtons();
+      renderChart();
+    });
+    rangeToInput.addEventListener('change', () => {
+      currentPreset = null;
+      updatePresetButtons();
+      renderChart();
+    });
 
     function renderChart() {
       if (typeof Chart === 'undefined') return;
