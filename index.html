@@ -138,8 +138,8 @@
     function loadStoredPreset() {
       try {
         const stored = localStorage.getItem(RANGE_PRESET_KEY);
-        return ALLOWED_PRESETS.includes(stored) ? stored : '1y';
-      } catch { return '1y'; }
+        return ALLOWED_PRESETS.includes(stored) ? stored : '7d';
+      } catch { return '7d'; }
     }
     let pageSize = (() => {
       const stored = parseInt(localStorage.getItem(PAGE_SIZE_KEY), 10);
@@ -157,7 +157,7 @@
     let editingIndex = -1;
     let isSavingEdit = false;
     let silentAttempt = false;
-    let currentPreset = '1y';
+    let currentPreset = '7d';
     const initState = { gapi: false, gis: false };
 
     const TOKEN_STORAGE_KEY = 'my-weight:token';
