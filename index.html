@@ -37,11 +37,11 @@
         </svg>
       </button>
     </header>
-    <div id="loading-section" class="text-center py-8">
+    <div id="loading-section" class="text-center min-h-36 flex flex-col items-center justify-center">
       <div class="inline-block w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin" role="status" aria-label="Načítám"></div>
       <p id="loading-message" class="text-sm text-gray-500 mt-2">Načítám...</p>
     </div>
-    <div id="auth-section" class="hidden text-center py-8">
+    <div id="auth-section" class="text-center min-h-36 flex flex-col items-center justify-center" style="display: none;">
       <button id="login-btn" class="inline-flex items-center gap-3 px-4 py-2 bg-white text-gray-700 font-medium border border-gray-300 rounded shadow-sm hover:bg-gray-50 transition">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="w-5 h-5" aria-hidden="true">
           <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/>
@@ -56,7 +56,7 @@
         <a href="privacy.html" id="privacy-login-link" class="underline hover:text-gray-700">zásadami ochrany osobních údajů</a>.
       </p>
     </div>
-    <div id="app-section" class="hidden">
+    <div id="app-section" style="display: none;">
       <div class="flex flex-wrap gap-1 mb-2">
         <button type="button" data-range="7d" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">7 dní</button>
         <button type="button" data-range="30d" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">30 dní</button>
@@ -235,9 +235,9 @@
     let currentSection = 'loading';
     function showSection(name) {
       currentSection = name;
-      loadingSection.classList.toggle('hidden', name !== 'loading');
-      authSection.classList.toggle('hidden', name !== 'auth');
-      appSection.classList.toggle('hidden', name !== 'app');
+      loadingSection.style.display = name === 'loading' ? '' : 'none';
+      authSection.style.display = name === 'auth' ? '' : 'none';
+      appSection.style.display = name === 'app' ? '' : 'none';
       menuBtn.classList.toggle('hidden', name !== 'app');
     }
 
