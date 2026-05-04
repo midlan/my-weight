@@ -725,6 +725,31 @@
       return Number(w).toLocaleString(undefined, { maximumFractionDigits: 10 });
     }
 
+    function wrapTooltipNote(text, maxChars) {
+      const lines = [];
+      for (const rawLine of String(text).split('\n')) {
+        if (rawLine.length <= maxChars) { lines.push(rawLine); continue; }
+        let current = '';
+        for (const word of rawLine.split(/\s+/)) {
+          if (!word) continue;
+          if (word.length > maxChars) {
+            if (current) { lines.push(current); current = ''; }
+            for (let i = 0; i < word.length; i += maxChars) {
+              const chunk = word.slice(i, i + maxChars);
+              if (i + maxChars < word.length) lines.push(chunk);
+              else current = chunk;
+            }
+            continue;
+          }
+          if (!current) current = word;
+          else if ((current + ' ' + word).length <= maxChars) current += ' ' + word;
+          else { lines.push(current); current = word; }
+        }
+        if (current) lines.push(current);
+      }
+      return lines;
+    }
+
     function isoToMinute(iso) {
       return typeof iso === 'string' ? iso.substring(0, 16) : '';
     }
@@ -1124,7 +1149,11 @@
                 },
                 afterBody: (items) => {
                   const note = items?.[0]?.raw?.note;
-                  return note ? note.split('\n') : [];
+                  if (!note) return [];
+                  const chartWidth = items[0].chart?.width || 400;
+                  const usable = Math.max(120, chartWidth - 50);
+                  const maxChars = Math.max(15, Math.floor(usable / 7));
+                  return wrapTooltipNote(note, maxChars);
                 }
               }
             }
