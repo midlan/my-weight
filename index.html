@@ -106,13 +106,13 @@
       </form>
       <hr class="my-4" />
       <h2 class="text-xl font-semibold mb-2">Historie</h2>
-      <ul id="history-list" class="space-y-2 max-h-64 overflow-auto"></ul>
-      <div id="pagination" class="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm hidden">
+      <div id="pagination" class="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm hidden">
         <label class="flex items-center gap-1 text-gray-600">
           <span>Na stránku:</span>
           <select id="page-size" class="border-gray-300 rounded">
+            <option value="10" selected>10</option>
             <option value="25">25</option>
-            <option value="50" selected>50</option>
+            <option value="50">50</option>
             <option value="100">100</option>
             <option value="250">250</option>
             <option value="500">500</option>
@@ -124,6 +124,7 @@
           <button id="next-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Další</button>
         </div>
       </div>
+      <ul id="history-list" class="space-y-2"></ul>
     </div>
     <div id="menu-overlay" class="hidden absolute inset-0 bg-white p-6 sm:rounded-lg overflow-auto">
       <header class="flex items-center justify-between mb-4">
@@ -249,18 +250,14 @@
     const pageInfoEl = document.getElementById('page-info');
     const pageSizeSelect = document.getElementById('page-size');
 
-    const PAGE_SIZE_KEY = 'my-weight:pageSize';
-    const ALLOWED_PAGE_SIZES = [25, 50, 100, 250, 500];
+    const ALLOWED_PAGE_SIZES = [10, 25, 50, 100, 250, 500];
     const ALLOWED_PRESETS = ['7d', '30d', '3m', '6m', '1y', '5y', 'all'];
 
     function effectivePreset() {
       const stored = settings.rangePreset;
       return ALLOWED_PRESETS.includes(stored) ? stored : '7d';
     }
-    let pageSize = (() => {
-      const stored = parseInt(localStorage.getItem(PAGE_SIZE_KEY), 10);
-      return ALLOWED_PAGE_SIZES.includes(stored) ? stored : 50;
-    })();
+    let pageSize = 10;
     pageSizeSelect.value = String(pageSize);
     let currentPage = 0;
 
@@ -1175,10 +1172,8 @@
       const next = parseInt(pageSizeSelect.value, 10);
       if (!ALLOWED_PAGE_SIZES.includes(next)) return;
       pageSize = next;
-      localStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
       currentPage = 0;
       renderRecords();
-      historyList.scrollTop = 0;
     });
 
     document.querySelectorAll('.range-btn').forEach(btn => {
@@ -1302,14 +1297,12 @@
       if (currentPage > 0) {
         currentPage--;
         renderRecords();
-        historyList.scrollTop = 0;
-      }
+        }
     });
 
     nextPageBtn.addEventListener('click', () => {
       currentPage++;
       renderRecords();
-      historyList.scrollTop = 0;
     });
   </script>
 </body>
