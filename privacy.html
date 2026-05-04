@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zásady ochrany osobních údajů – Moje váha</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
+</head>
+<body class="bg-gray-100 min-h-screen sm:flex sm:items-center sm:justify-center">
+  <div class="bg-white p-6 w-full min-h-screen sm:max-w-2xl sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg">
+    <h1 class="text-2xl font-bold mb-2">Zásady ochrany osobních údajů</h1>
+    <p class="text-sm text-gray-500 mb-4">Aplikace Moje váha — <a class="underline" href="./">midlan.github.io/my-weight</a></p>
+    <div class="space-y-3 text-gray-700 text-sm leading-relaxed">
+      <p>Tato aplikace neukládá žádná data na vlastních serverech. Vývojář aplikace nemá k vašim záznamům žádný přístup.</p>
+      <p>Vaše záznamy o váze a předvolby aplikace se ukládají výhradně do vašeho Google Drive — do skryté složky <code class="px-1 bg-gray-100 rounded">appDataFolder</code>, která je oddělená od vašich ostatních souborů a má k ní přístup pouze tato aplikace.</p>
+      <p>Aplikace si vyžaduje pouze oprávnění <code class="px-1 bg-gray-100 rounded">https://www.googleapis.com/auth/drive.appdata</code>, které opravňuje k zápisu a čtení dat výhradně v této soukromé složce. Aplikace nečte ani nemění žádné jiné soubory ve vašem Google Drive.</p>
+      <p>Veškerá vaše data můžete kdykoli smazat z menu aplikace tlačítkem „Smazat všechna data" — tím se odstraní soubor s vašimi záznamy z vašeho Google Drive. Po odhlášení můžete také odebrat oprávnění aplikace v <a class="underline" href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">nastavení účtu Google</a>.</p>
+      <p>Aplikace nepoužívá žádné analytické nástroje, neodesílá data třetím stranám a neukládá cookies. V prohlížeči ukládá pouze přihlašovací token Google (do <code class="px-1 bg-gray-100 rounded">localStorage</code>), aby vás nemusela při každém otevření znovu přihlašovat. Token je platný několik hodin a po odhlášení je odstraněn.</p>
+      <p class="pt-3 border-t border-gray-200">Kontakt na vývojáře: <a class="underline" href="mailto:mojevaha@milandavidek.cz">mojevaha@milandavidek.cz</a></p>
+    </div>
+    <p class="mt-6"><a href="./" class="text-blue-600 underline">← Zpět do aplikace</a></p>
+  </div>
+</body>
+</html>

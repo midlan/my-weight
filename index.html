@@ -51,6 +51,10 @@
         </svg>
         <span>Přihlásit přes Google</span>
       </button>
+      <p class="text-xs text-gray-500 mt-3">
+        Přihlášením souhlasíte se
+        <a href="privacy.html" id="privacy-login-link" class="underline hover:text-gray-700">zásadami ochrany osobních údajů</a>.
+      </p>
     </div>
     <div id="app-section" class="hidden">
       <div class="flex flex-wrap gap-1 mb-2">
@@ -154,12 +158,35 @@
         <input type="file" id="import-input" accept="application/json,.json" class="hidden" />
       </div>
       <hr class="my-4" />
+      <button id="privacy-menu-btn" class="w-full px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 transition">
+        Zásady ochrany osobních údajů
+      </button>
+      <hr class="my-4" />
       <button id="logout-btn" class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
         Odhlásit se
       </button>
       <button id="wipe-btn" class="mt-2 w-full px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded hover:bg-red-200 transition">
         Smazat všechna data
       </button>
+    </div>
+    <!-- Keep this content in sync with privacy.html -->
+    <div id="privacy-overlay" class="hidden absolute inset-0 bg-white p-6 sm:rounded-lg overflow-auto">
+      <header class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">Zásady ochrany osobních údajů</h2>
+        <button id="privacy-close-btn" class="p-1 rounded text-gray-700 hover:bg-gray-100" title="Zavřít">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </header>
+      <div class="space-y-3 text-gray-700 text-sm leading-relaxed">
+        <p>Tato aplikace neukládá žádná data na vlastních serverech. Vývojář aplikace nemá k vašim záznamům žádný přístup.</p>
+        <p>Vaše záznamy o váze a předvolby aplikace se ukládají výhradně do vašeho Google Drive — do skryté složky <code class="px-1 bg-gray-100 rounded">appDataFolder</code>, která je oddělená od vašich ostatních souborů a má k ní přístup pouze tato aplikace.</p>
+        <p>Aplikace si vyžaduje pouze oprávnění <code class="px-1 bg-gray-100 rounded">https://www.googleapis.com/auth/drive.appdata</code>, které opravňuje k zápisu a čtení dat výhradně v této soukromé složce. Aplikace nečte ani nemění žádné jiné soubory ve vašem Google Drive.</p>
+        <p>Veškerá vaše data můžete kdykoli smazat z menu aplikace tlačítkem „Smazat všechna data" — tím se odstraní soubor s vašimi záznamy z vašeho Google Drive. Po odhlášení můžete také odebrat oprávnění aplikace v <a class="underline" href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">nastavení účtu Google</a>.</p>
+        <p>Aplikace nepoužívá žádné analytické nástroje, neodesílá data třetím stranám a neukládá cookies. V prohlížeči ukládá pouze přihlašovací token Google (do <code class="px-1 bg-gray-100 rounded">localStorage</code>), aby vás nemusela při každém otevření znovu přihlašovat. Token je platný několik hodin a po odhlášení je odstraněn.</p>
+        <p class="pt-3 border-t border-gray-200">Kontakt na vývojáře: <a class="underline" href="mailto:mojevaha@milandavidek.cz">mojevaha@milandavidek.cz</a></p>
+      </div>
     </div>
   </div>
 
@@ -198,6 +225,10 @@
     const menuBtn = document.getElementById('menu-btn');
     const menuCloseBtn = document.getElementById('menu-close-btn');
     const menuOverlay = document.getElementById('menu-overlay');
+    const privacyOverlay = document.getElementById('privacy-overlay');
+    const privacyCloseBtn = document.getElementById('privacy-close-btn');
+    const privacyMenuBtn = document.getElementById('privacy-menu-btn');
+    const privacyLoginLink = document.getElementById('privacy-login-link');
     const exportBtn = document.getElementById('export-btn');
     const importBtn = document.getElementById('import-btn');
     const importInput = document.getElementById('import-input');
@@ -221,6 +252,14 @@
     menuCloseBtn.addEventListener('click', () => {
       menuOverlay.classList.add('hidden');
     });
+
+    function openPrivacy() {
+      menuOverlay.classList.add('hidden');
+      privacyOverlay.classList.remove('hidden');
+    }
+    privacyMenuBtn.addEventListener('click', openPrivacy);
+    privacyLoginLink.addEventListener('click', (e) => { e.preventDefault(); openPrivacy(); });
+    privacyCloseBtn.addEventListener('click', () => privacyOverlay.classList.add('hidden'));
 
     function showLoading(msg = 'Načítám...') {
       loadingMessageEl.textContent = msg;
