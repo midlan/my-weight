@@ -853,38 +853,49 @@
         if (r.note) {
           noteSpan.textContent = r.note;
           noteSpan.title = r.note;
-          li.style.cursor = 'pointer';
-          li.addEventListener('click', (e) => {
-            if (actions.contains(e.target)) return;
-            if (window.getSelection()?.toString()) return;
-            const aRect = actions.getBoundingClientRect();
-            const buffer = 12;
-            if (e.clientX >= aRect.left - buffer &&
-                e.clientX <= aRect.right + buffer &&
-                e.clientY >= aRect.top - buffer &&
-                e.clientY <= aRect.bottom + buffer) {
-              return;
-            }
-            if (expandedNotes.has(r)) expandedNotes.delete(r);
-            else expandedNotes.add(r);
-            renderRecords();
-          });
         }
+
+        const onToggle = () => {
+          if (window.getSelection()?.toString()) return;
+          if (expandedNotes.has(r)) expandedNotes.delete(r);
+          else expandedNotes.add(r);
+          renderRecords();
+        };
 
         if (isExpanded) {
           li.className = 'p-2 bg-gray-50 rounded flex flex-col gap-2';
           dateSpan.className = 'flex-1';
           noteSpan.classList.add('whitespace-pre-wrap');
 
+          const topContent = document.createElement('div');
+          topContent.className = 'flex items-center gap-2 flex-1 min-w-0';
+          topContent.append(dateSpan, weightSpan);
+          if (r.note) {
+            topContent.style.cursor = 'pointer';
+            topContent.addEventListener('click', onToggle);
+            noteSpan.style.cursor = 'pointer';
+            noteSpan.addEventListener('click', onToggle);
+          }
+
           const topRow = document.createElement('div');
           topRow.className = 'flex items-center gap-2';
-          topRow.append(dateSpan, weightSpan, actions);
+          topRow.append(topContent, actions);
+
           li.append(topRow, noteSpan);
         } else {
-          li.className = 'p-2 bg-gray-50 rounded flex items-center justify-between gap-2';
+          li.className = 'p-2 bg-gray-50 rounded flex items-center gap-2';
           dateSpan.className = 'shrink-0';
           noteSpan.classList.add('flex-1', 'min-w-0', 'truncate');
-          li.append(dateSpan, noteSpan, weightSpan, actions);
+
+          const content = document.createElement('div');
+          content.className = 'flex items-center gap-2 flex-1 min-w-0';
+          content.append(dateSpan, noteSpan, weightSpan);
+          if (r.note) {
+            content.style.cursor = 'pointer';
+            content.addEventListener('click', onToggle);
+          }
+
+          li.append(content, actions);
         }
       }
       return li;
