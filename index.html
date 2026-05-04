@@ -22,8 +22,15 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen sm:flex sm:items-center sm:justify-center">
-  <div class="bg-white p-6 w-full min-h-screen sm:max-w-2xl sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg">
-    <h1 class="text-2xl font-bold mb-4 text-center">Moje váha</h1>
+  <div class="bg-white p-6 w-full min-h-screen sm:max-w-2xl sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg relative">
+    <header class="flex items-center justify-between mb-4">
+      <h1 class="text-2xl font-bold">Moje váha</h1>
+      <button id="menu-btn" class="hidden p-1 rounded text-gray-700 hover:bg-gray-100" title="Menu">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/>
+        </svg>
+      </button>
+    </header>
     <div id="loading-section" class="text-center py-8">
       <div class="inline-block w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin" role="status" aria-label="Načítám"></div>
       <p id="loading-message" class="text-sm text-gray-500 mt-2">Načítám...</p>
@@ -104,6 +111,16 @@
           <button id="next-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Další</button>
         </div>
       </div>
+    </div>
+    <div id="menu-overlay" class="hidden absolute inset-0 bg-white p-6 sm:rounded-lg overflow-auto">
+      <header class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">Menu</h2>
+        <button id="menu-close-btn" class="p-1 rounded text-gray-700 hover:bg-gray-100" title="Zavřít">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </header>
       <button id="logout-btn" class="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
         Odhlásit se
       </button>
@@ -134,6 +151,9 @@
 
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
+    const menuBtn = document.getElementById('menu-btn');
+    const menuCloseBtn = document.getElementById('menu-close-btn');
+    const menuOverlay = document.getElementById('menu-overlay');
     const loadingSection = document.getElementById('loading-section');
     const loadingMessageEl = document.getElementById('loading-message');
     const authSection = document.getElementById('auth-section');
@@ -143,7 +163,16 @@
       loadingSection.classList.toggle('hidden', name !== 'loading');
       authSection.classList.toggle('hidden', name !== 'auth');
       appSection.classList.toggle('hidden', name !== 'app');
+      menuBtn.classList.toggle('hidden', name !== 'app');
     }
+
+    menuBtn.addEventListener('click', () => {
+      menuOverlay.classList.remove('hidden');
+    });
+
+    menuCloseBtn.addEventListener('click', () => {
+      menuOverlay.classList.add('hidden');
+    });
 
     function showLoading(msg = 'Načítám...') {
       loadingMessageEl.textContent = msg;
@@ -388,6 +417,7 @@
     });
 
     logoutBtn.addEventListener('click', () => {
+      menuOverlay.classList.add('hidden');
       if (accessToken) google.accounts.oauth2.revoke(accessToken);
       clearStoredToken();
       if (gapiReady) gapi.client.setToken(null);
@@ -642,7 +672,10 @@
       }
     }
 
-    wipeBtn.addEventListener('click', wipeAllData);
+    wipeBtn.addEventListener('click', () => {
+      menuOverlay.classList.add('hidden');
+      wipeAllData();
+    });
 
     function formatCzechDateTime(d) {
       const mm = String(d.getMinutes()).padStart(2, '0');
