@@ -220,6 +220,7 @@
     let isSavingEdit = false;
     let deletingIndex = -1;
     let nowMode = true;
+    const expandedNotes = new WeakSet();
     let silentAttempt = false;
     let silentTimeoutId = null;
     let currentPreset = '7d';
@@ -812,30 +813,13 @@
         topRow.append(dtInput, wInput, actions);
         li.append(topRow, editNoteInput);
       } else {
-        li.className = 'p-2 bg-gray-50 rounded flex items-center justify-between gap-2';
+        const isExpanded = !!r.note && expandedNotes.has(r);
+
         const dateSpan = document.createElement('span');
-        dateSpan.className = 'shrink-0';
         dateSpan.textContent = formatCzechDateTime(new Date(r.datetime));
 
-        const noteSpan = document.createElement('span');
-        noteSpan.className = 'flex-1 min-w-0 text-sm text-gray-600 truncate';
-        if (r.note) {
-          noteSpan.textContent = r.note;
-          noteSpan.title = r.note;
-          noteSpan.classList.add('cursor-pointer');
-          noteSpan.addEventListener('click', () => {
-            if (noteSpan.classList.contains('truncate')) {
-              noteSpan.classList.remove('truncate');
-              noteSpan.classList.add('whitespace-pre-wrap');
-            } else {
-              noteSpan.classList.add('truncate');
-              noteSpan.classList.remove('whitespace-pre-wrap');
-            }
-          });
-        }
-
         const weightSpan = document.createElement('span');
-        weightSpan.className = 'tabular-nums font-medium text-right min-w-[5rem]';
+        weightSpan.className = 'tabular-nums font-medium text-right min-w-[5rem] shrink-0';
         weightSpan.textContent = `${formatWeight(r.weight)} kg`;
 
         const actions = document.createElement('div');
@@ -864,7 +848,35 @@
           actions.append(editBtn, delBtn);
         }
 
-        li.append(dateSpan, noteSpan, weightSpan, actions);
+        const noteSpan = document.createElement('span');
+        noteSpan.className = 'text-sm text-gray-600';
+        if (r.note) {
+          noteSpan.textContent = r.note;
+          noteSpan.title = r.note;
+          noteSpan.classList.add('cursor-pointer');
+          noteSpan.addEventListener('click', () => {
+            if (window.getSelection()?.toString()) return;
+            if (expandedNotes.has(r)) expandedNotes.delete(r);
+            else expandedNotes.add(r);
+            renderRecords();
+          });
+        }
+
+        if (isExpanded) {
+          li.className = 'p-2 bg-gray-50 rounded flex flex-col gap-2';
+          dateSpan.className = 'flex-1';
+          noteSpan.classList.add('whitespace-pre-wrap');
+
+          const topRow = document.createElement('div');
+          topRow.className = 'flex items-center gap-2';
+          topRow.append(dateSpan, weightSpan, actions);
+          li.append(topRow, noteSpan);
+        } else {
+          li.className = 'p-2 bg-gray-50 rounded flex items-center justify-between gap-2';
+          dateSpan.className = 'shrink-0';
+          noteSpan.classList.add('flex-1', 'min-w-0', 'truncate');
+          li.append(dateSpan, noteSpan, weightSpan, actions);
+        }
       }
       return li;
     }
