@@ -10,7 +10,7 @@
     script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://accounts.google.com/gsi https://accounts.google.com/gsi/client https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
     frame-src https://accounts.google.com https://accounts.google.com/gsi https://content.googleapis.com;
-    connect-src https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
+    connect-src 'self' https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
 
   <!-- Tailwind CSS via Browser CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
@@ -169,7 +169,6 @@
         Smazat všechna data
       </button>
     </div>
-    <!-- Keep this content in sync with privacy.html -->
     <div id="privacy-overlay" class="hidden fixed inset-0 z-50 bg-gray-100 overflow-auto sm:flex sm:items-center sm:justify-center">
       <div class="bg-white p-6 w-full min-h-screen sm:max-w-2xl sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg">
         <header class="flex items-center justify-between mb-4">
@@ -180,13 +179,8 @@
             </svg>
           </button>
         </header>
-        <div class="space-y-3 text-gray-700 text-sm leading-relaxed">
-          <p>Tato aplikace neukládá žádná data na vlastních serverech. Vývojář aplikace nemá k vašim záznamům žádný přístup.</p>
-          <p>Vaše záznamy o váze a předvolby aplikace se ukládají výhradně do vašeho Google Drive — do skryté složky <code class="px-1 bg-gray-100 rounded break-all">appDataFolder</code>, která je oddělená od vašich ostatních souborů a má k ní přístup pouze tato aplikace.</p>
-          <p>Aplikace si vyžaduje pouze oprávnění <code class="px-1 bg-gray-100 rounded break-all">https://www.googleapis.com/auth/drive.appdata</code>, které opravňuje k zápisu a čtení dat výhradně v této soukromé složce. Aplikace nečte ani nemění žádné jiné soubory ve vašem Google Drive.</p>
-          <p>Veškerá vaše data můžete kdykoli smazat z menu aplikace tlačítkem „Smazat všechna data" — tím se odstraní soubor s vašimi záznamy z vašeho Google Drive. Po odhlášení můžete také odebrat oprávnění aplikace v <a class="underline" href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">nastavení účtu Google</a>.</p>
-          <p>Aplikace nepoužívá žádné analytické nástroje, neodesílá data třetím stranám a neukládá cookies. V prohlížeči ukládá pouze přihlašovací token Google (do <code class="px-1 bg-gray-100 rounded break-all">localStorage</code>), aby vás nemusela při každém otevření znovu přihlašovat. Token je platný několik hodin a po odhlášení je odstraněn.</p>
-          <p class="pt-3 border-t border-gray-200">Kontakt na vývojáře: <a class="underline break-all" href="mailto:mojevaha@milandavidek.cz">mojevaha@milandavidek.cz</a></p>
+        <div id="privacy-modal-content" class="space-y-3 text-gray-700 text-sm leading-relaxed">
+          <p class="text-gray-500">Načítám...</p>
         </div>
       </div>
     </div>
@@ -255,9 +249,30 @@
       menuOverlay.classList.add('hidden');
     });
 
-    function openPrivacy() {
+    const privacyContentEl = document.getElementById('privacy-modal-content');
+    let privacyContentLoaded = false;
+
+    async function loadPrivacyContent() {
+      if (privacyContentLoaded) return;
+      try {
+        const res = await fetch('privacy.html');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const source = doc.getElementById('privacy-content');
+        if (!source) throw new Error('privacy-content not found');
+        privacyContentEl.replaceChildren(...source.childNodes);
+        privacyContentLoaded = true;
+      } catch (err) {
+        console.warn('Failed to load privacy content', err);
+        privacyContentEl.innerHTML = 'Nepodařilo se načíst zásady. Otevřete <a class="underline text-blue-600" href="privacy.html">privacy.html</a>.';
+      }
+    }
+
+    async function openPrivacy() {
       menuOverlay.classList.add('hidden');
       privacyOverlay.classList.remove('hidden');
+      await loadPrivacyContent();
     }
     privacyMenuBtn.addEventListener('click', openPrivacy);
     privacyLoginLink.addEventListener('click', (e) => { e.preventDefault(); openPrivacy(); });
