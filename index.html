@@ -179,9 +179,7 @@
             </svg>
           </button>
         </header>
-        <div id="privacy-modal-content" class="space-y-3 text-gray-700 text-sm leading-relaxed">
-          <p class="text-gray-500">Načítám...</p>
-        </div>
+        <div id="privacy-modal-content" class="space-y-3 text-gray-700 text-sm leading-relaxed"></div>
       </div>
     </div>
   </div>
@@ -234,7 +232,9 @@
     const authSection = document.getElementById('auth-section');
     const appSection = document.getElementById('app-section');
 
+    let currentSection = 'loading';
     function showSection(name) {
+      currentSection = name;
       loadingSection.classList.toggle('hidden', name !== 'loading');
       authSection.classList.toggle('hidden', name !== 'auth');
       appSection.classList.toggle('hidden', name !== 'app');
@@ -251,28 +251,42 @@
 
     const privacyContentEl = document.getElementById('privacy-modal-content');
     let privacyContentLoaded = false;
+    let privacyContentPromise = null;
 
-    async function loadPrivacyContent() {
-      if (privacyContentLoaded) return;
-      try {
-        const res = await fetch('privacy.html');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const html = await res.text();
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const source = doc.getElementById('privacy-content');
-        if (!source) throw new Error('privacy-content not found');
-        privacyContentEl.replaceChildren(...source.childNodes);
-        privacyContentLoaded = true;
-      } catch (err) {
-        console.warn('Failed to load privacy content', err);
-        privacyContentEl.innerHTML = 'Nepodařilo se načíst zásady. Otevřete <a class="underline text-blue-600" href="privacy.html">privacy.html</a>.';
-      }
+    function loadPrivacyContent() {
+      if (privacyContentLoaded) return Promise.resolve();
+      if (privacyContentPromise) return privacyContentPromise;
+      privacyContentPromise = (async () => {
+        try {
+          const res = await fetch('privacy.html');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const html = await res.text();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const source = doc.getElementById('privacy-content');
+          if (!source) throw new Error('privacy-content not found');
+          privacyContentEl.replaceChildren(...source.childNodes);
+          privacyContentLoaded = true;
+        } catch (err) {
+          console.warn('Failed to load privacy content', err);
+          privacyContentEl.innerHTML = 'Nepodařilo se načíst zásady. Otevřete <a class="underline text-blue-600" href="privacy.html">privacy.html</a>.';
+        } finally {
+          privacyContentPromise = null;
+        }
+      })();
+      return privacyContentPromise;
     }
 
     async function openPrivacy() {
       menuOverlay.classList.add('hidden');
-      privacyOverlay.classList.remove('hidden');
+      if (privacyContentLoaded) {
+        privacyOverlay.classList.remove('hidden');
+        return;
+      }
+      const restoreSection = currentSection;
+      showLoading('Načítám zásady...');
       await loadPrivacyContent();
+      showSection(restoreSection);
+      privacyOverlay.classList.remove('hidden');
     }
     privacyMenuBtn.addEventListener('click', openPrivacy);
     privacyLoginLink.addEventListener('click', (e) => { e.preventDefault(); openPrivacy(); });
