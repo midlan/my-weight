@@ -853,10 +853,18 @@
         if (r.note) {
           noteSpan.textContent = r.note;
           noteSpan.title = r.note;
-          li.classList.add('cursor-pointer');
+          li.style.cursor = 'pointer';
           li.addEventListener('click', (e) => {
             if (actions.contains(e.target)) return;
             if (window.getSelection()?.toString()) return;
+            const aRect = actions.getBoundingClientRect();
+            const buffer = 12;
+            if (e.clientX >= aRect.left - buffer &&
+                e.clientX <= aRect.right + buffer &&
+                e.clientY >= aRect.top - buffer &&
+                e.clientY <= aRect.bottom + buffer) {
+              return;
+            }
             if (expandedNotes.has(r)) expandedNotes.delete(r);
             else expandedNotes.add(r);
             renderRecords();
