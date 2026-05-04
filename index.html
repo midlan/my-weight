@@ -822,6 +822,16 @@
         if (r.note) {
           noteSpan.textContent = r.note;
           noteSpan.title = r.note;
+          noteSpan.classList.add('cursor-pointer');
+          noteSpan.addEventListener('click', () => {
+            if (noteSpan.classList.contains('truncate')) {
+              noteSpan.classList.remove('truncate');
+              noteSpan.classList.add('whitespace-pre-wrap');
+            } else {
+              noteSpan.classList.add('truncate');
+              noteSpan.classList.remove('whitespace-pre-wrap');
+            }
+          });
         }
 
         const weightSpan = document.createElement('span');
