@@ -761,14 +761,15 @@
       const td = new Date();
       const todayCz = `${String(td.getDate()).padStart(2, '0')}.${String(td.getMonth() + 1).padStart(2, '0')}.${td.getFullYear()}`;
       const url = `https://www.kaloricketabulky.cz/statistic/weight/01.01.1970/${todayCz}/get?format=json`;
-      alert(
+      prompt(
         'Jak získat data z kaloricketabulky.cz:\n\n' +
         '1. Přihlaste se na https://www.kaloricketabulky.cz\n' +
-        '2. V prohlížeči otevřete tento odkaz (druhé datum je dnešní):\n' +
-        url + '\n' +
+        '2. Zkopírujte URL z pole níže a otevřete ji v prohlížeči (druhé datum je dnešní).\n' +
         '3. Prohlížeč zobrazí nebo stáhne JSON soubor – uložte ho.\n' +
         '4. V tomto menu klikněte na "Importovat data" a vyberte stažený soubor.\n\n' +
-        'Soubor exportovaný z této aplikace ("Exportovat data") můžete také naimportovat zpět.'
+        'Soubor exportovaný z této aplikace ("Exportovat data") můžete také naimportovat zpět.\n\n' +
+        'URL ke zkopírování:',
+        url
       );
     });
 
