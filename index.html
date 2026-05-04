@@ -853,8 +853,9 @@
         if (r.note) {
           noteSpan.textContent = r.note;
           noteSpan.title = r.note;
-          noteSpan.classList.add('cursor-pointer');
-          noteSpan.addEventListener('click', () => {
+          li.classList.add('cursor-pointer');
+          li.addEventListener('click', (e) => {
+            if (actions.contains(e.target)) return;
             if (window.getSelection()?.toString()) return;
             if (expandedNotes.has(r)) expandedNotes.delete(r);
             else expandedNotes.add(r);
