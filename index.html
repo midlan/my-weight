@@ -146,8 +146,19 @@
     let accessToken = null;
     let gapiReady = false;
     let records = [];
+    let settings = {};
     let fileId = null;
     let recordsLoaded = false;
+    let settingsSaveTimer = null;
+
+    function scheduleSettingsSave() {
+      if (!accessToken || !recordsLoaded) return;
+      if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
+      settingsSaveTimer = setTimeout(() => {
+        settingsSaveTimer = null;
+        uploadRecords().catch(err => console.error('Failed to save settings', err));
+      }, 500);
+    }
 
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
@@ -194,14 +205,11 @@
 
     const PAGE_SIZE_KEY = 'my-weight:pageSize';
     const ALLOWED_PAGE_SIZES = [25, 50, 100, 250, 500];
-    const RANGE_PRESET_KEY = 'my-weight:rangePreset';
     const ALLOWED_PRESETS = ['7d', '30d', '6m', '1y', '5y', 'all'];
 
-    function loadStoredPreset() {
-      try {
-        const stored = localStorage.getItem(RANGE_PRESET_KEY);
-        return ALLOWED_PRESETS.includes(stored) ? stored : '7d';
-      } catch { return '7d'; }
+    function effectivePreset() {
+      const stored = settings.rangePreset;
+      return ALLOWED_PRESETS.includes(stored) ? stored : '7d';
     }
     let pageSize = (() => {
       const stored = parseInt(localStorage.getItem(PAGE_SIZE_KEY), 10);
@@ -266,7 +274,6 @@
     const ICON_CANCEL = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>';
 
     window.onload = () => {
-      applyRangePreset(loadStoredPreset());
       initGapi();
       initGis();
     };
@@ -323,7 +330,6 @@
       rangeFromInput.value = toDateInputValue(from);
       rangeToInput.value = toDateInputValue(to);
       currentPreset = preset;
-      try { localStorage.setItem(RANGE_PRESET_KEY, preset); } catch {}
       updatePresetButtons();
     }
 
@@ -424,6 +430,7 @@
       if (gapiReady) gapi.client.setToken(null);
       accessToken = null;
       records = [];
+      settings = {};
       fileId = null;
       recordsLoaded = false;
       currentPage = 0;
@@ -436,7 +443,7 @@
         chart = null;
       }
       chartEmptyEl.classList.add('hidden');
-      applyRangePreset(loadStoredPreset());
+      applyRangePreset(effectivePreset());
     });
 
     async function onSignIn() {
@@ -509,6 +516,7 @@
 
     function migrate(parsed) {
       let rawRecords;
+      let parsedSettings = {};
       let migrated = false;
       if (Array.isArray(parsed)) {
         rawRecords = parsed;
@@ -516,6 +524,9 @@
       } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) {
         rawRecords = parsed.records;
         if (parsed.version !== SCHEMA_VERSION) migrated = true;
+        if (parsed.settings && typeof parsed.settings === 'object' && !Array.isArray(parsed.settings)) {
+          parsedSettings = parsed.settings;
+        }
       } else {
         rawRecords = [];
         migrated = true;
@@ -543,11 +554,11 @@
         }
         migrated = true;
       }
-      return { records: normalized, migrated };
+      return { records: normalized, settings: parsedSettings, migrated };
     }
 
     async function uploadRecords() {
-      const payload = JSON.stringify({ version: SCHEMA_VERSION, records });
+      const payload = JSON.stringify({ version: SCHEMA_VERSION, records, settings });
       if (fileId) {
         const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
         const res = await fetch(updateUrl, {
@@ -587,15 +598,18 @@
           const parsed = JSON.parse(download.body || 'null');
           const result = migrate(parsed);
           records = result.records;
+          settings = result.settings;
           needsRewrite = result.migrated;
         } else {
           fileId = null;
           records = [];
+          settings = {};
         }
         recordsLoaded = true;
         if (needsRewrite && fileId) {
           await uploadRecords();
         }
+        applyRangePreset(effectivePreset());
         renderRecords();
         renderChart();
         prefillWeightInput();
@@ -613,8 +627,10 @@
         }
         if (!recordsLoaded) {
           records = [];
+          settings = {};
           recordsLoaded = true;
         }
+        applyRangePreset(effectivePreset());
         renderRecords();
         renderChart();
         prefillWeightInput();
@@ -993,6 +1009,8 @@
     document.querySelectorAll('.range-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         applyRangePreset(btn.dataset.range);
+        settings.rangePreset = currentPreset;
+        scheduleSettingsSave();
         renderChart();
       });
     });

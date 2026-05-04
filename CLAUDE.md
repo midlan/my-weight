@@ -52,7 +52,10 @@ This is the part most likely to bite a future change, so read carefully.
   "records": [
     { "datetime": "2026-05-02T07:14:00.000Z", "weight": 72.5 },
     { "datetime": "2026-05-03T07:31:00.000Z", "weight": 72.3, "note": "po běhu" }
-  ]
+  ],
+  "settings": {
+    "rangePreset": "30d"
+  }
 }
 ```
 
@@ -64,6 +67,13 @@ This is the part most likely to bite a future change, so read carefully.
   omit the key entirely (no empty string), so old records and new
   records-without-notes are byte-identical to the previous schema —
   no version bump or rewrite needed when the field was introduced.
+- `settings` is an **optional** object holding cross-device app
+  preferences (chart range preset, etc.). Adding new keys here is a
+  forward-compatible change; readers ignore unknown keys, missing
+  settings fall back to defaults. Currently:
+  - `rangePreset` — one of `7d`, `30d`, `6m`, `1y`, `5y`, `all`.
+  Saves are debounced (500 ms) on the device that changed the value
+  and ride along with the regular records upload.
 - Datetime is the unique key (matched at minute precision); a record's
   weight or note can change but two records can't share a minute.
 - The schema version constant is `SCHEMA_VERSION` near the top of the
