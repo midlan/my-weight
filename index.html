@@ -841,7 +841,7 @@
           });
 
           actions = document.createElement('div');
-          actions.className = 'flex gap-1 shrink-0 -my-1.5';
+          actions.className = 'flex gap-1 shrink-0 -my-1.5 -mr-2';
           actions.append(saveBtn, cancelBtn);
           setTimeout(() => wInput.focus(), 0);
         }
@@ -861,7 +861,7 @@
         weightSpan.textContent = `${formatWeight(r.weight)} kg`;
 
         const actions = document.createElement('div');
-        actions.className = 'flex gap-1 shrink-0 -my-1.5';
+        actions.className = 'flex gap-1 shrink-0 -my-1.5 -mr-2';
 
         if (idx === deletingIndex) {
           const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500');
