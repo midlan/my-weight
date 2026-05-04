@@ -78,7 +78,7 @@
         </div>
         <div>
           <label for="note" class="block text-sm font-medium">Poznámka</label>
-          <input type="text" id="note" class="mt-1 block w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm" />
+          <textarea id="note" rows="1" class="mt-1 block w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm resize-none"></textarea>
         </div>
         <button type="submit" class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
           Uložit
@@ -257,6 +257,11 @@
     }
 
     nowBtn.addEventListener('click', activateDatetimeInput);
+
+    noteInput.addEventListener('focus', () => { noteInput.rows = 3; });
+    noteInput.addEventListener('blur', () => {
+      if (noteInput.value.trim() === '') noteInput.rows = 1;
+    });
 
     function toDateInputValue(d) {
       const pad = (n) => String(n).padStart(2, '0');
@@ -716,26 +721,27 @@
 
     function buildHistoryRow(r, idx) {
       const li = document.createElement('li');
-      li.className = 'p-2 bg-gray-50 rounded flex items-center justify-between gap-2';
       li.dataset.idx = String(idx);
 
       if (idx === editingIndex) {
+        li.className = 'p-2 bg-gray-50 rounded flex flex-col gap-2';
+
         const dtInput = document.createElement('input');
         dtInput.type = 'datetime-local';
         dtInput.value = toLocalInputValue(new Date(r.datetime));
-        dtInput.className = 'min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
-
-        const editNoteInput = document.createElement('input');
-        editNoteInput.type = 'text';
-        editNoteInput.value = r.note || '';
-        editNoteInput.placeholder = 'Poznámka';
-        editNoteInput.className = 'flex-1 min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
+        dtInput.className = 'flex-1 min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
 
         const wInput = document.createElement('input');
         wInput.type = 'number';
         wInput.step = '0.1';
         wInput.value = String(r.weight);
         wInput.className = 'w-24 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm text-right';
+
+        const editNoteInput = document.createElement('textarea');
+        editNoteInput.rows = 2;
+        editNoteInput.value = r.note || '';
+        editNoteInput.placeholder = 'Poznámka';
+        editNoteInput.className = 'w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm resize-none';
 
         let actions;
         if (isSavingEdit) {
@@ -752,11 +758,14 @@
           const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 hover:bg-gray-200');
           cancelBtn.addEventListener('click', () => { editingIndex = -1; renderRecords(); });
 
-          [dtInput, editNoteInput, wInput].forEach(inp => {
+          [dtInput, wInput].forEach(inp => {
             inp.addEventListener('keydown', (e) => {
               if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
               else if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
             });
+          });
+          editNoteInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
           });
 
           actions = document.createElement('div');
@@ -765,8 +774,12 @@
           setTimeout(() => wInput.focus(), 0);
         }
 
-        li.append(dtInput, editNoteInput, wInput, actions);
+        const topRow = document.createElement('div');
+        topRow.className = 'flex items-center gap-2';
+        topRow.append(dtInput, wInput, actions);
+        li.append(topRow, editNoteInput);
       } else {
+        li.className = 'p-2 bg-gray-50 rounded flex items-center justify-between gap-2';
         const dateSpan = document.createElement('span');
         dateSpan.className = 'shrink-0';
         dateSpan.textContent = formatCzechDateTime(new Date(r.datetime));
@@ -877,12 +890,12 @@
         renderRecords();
         const failedLi = historyList.querySelector(`li[data-idx="${idx}"]`);
         if (failedLi) {
-          const inps = failedLi.querySelectorAll('input');
-          if (inps.length >= 3) {
-            inps[0].value = dtValue;
-            inps[1].value = noteValue || '';
-            inps[2].value = weightValue;
-            inps[2].focus();
+          const fields = failedLi.querySelectorAll('input, textarea');
+          if (fields.length >= 3) {
+            fields[0].value = dtValue;
+            fields[1].value = weightValue;
+            fields[2].value = noteValue || '';
+            fields[1].focus();
           }
         }
         alert('Chyba při ukládání: ' + describeDriveError(err));
