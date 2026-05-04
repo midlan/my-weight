@@ -1034,7 +1034,11 @@
       const toTs = toVal ? new Date(toVal + 'T23:59:59.999').getTime() : Infinity;
 
       const allPoints = records
-        .map(r => ({ x: r && typeof r.datetime === 'string' ? new Date(r.datetime).getTime() : NaN, y: r ? r.weight : NaN }))
+        .map(r => ({
+          x: r && typeof r.datetime === 'string' ? new Date(r.datetime).getTime() : NaN,
+          y: r ? r.weight : NaN,
+          note: r && typeof r.note === 'string' ? r.note : ''
+        }))
         .filter(p => !Number.isNaN(p.x) && !Number.isNaN(p.y))
         .sort((a, b) => a.x - b.x);
 
@@ -1095,6 +1099,10 @@
                   if (!items || items.length === 0) return '';
                   const ts = items[0].parsed.x;
                   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ts));
+                },
+                afterBody: (items) => {
+                  const note = items?.[0]?.raw?.note;
+                  return note ? note.split('\n') : [];
                 }
               }
             }
