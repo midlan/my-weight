@@ -71,7 +71,7 @@ This is the part most likely to bite a future change, so read carefully.
   preferences (chart range preset, etc.). Adding new keys here is a
   forward-compatible change; readers ignore unknown keys, missing
   settings fall back to defaults. Currently:
-  - `rangePreset` — one of `7d`, `30d`, `6m`, `1y`, `5y`, `all`.
+  - `rangePreset` — one of `7d`, `30d`, `3m`, `6m`, `1y`, `5y`, `all`.
   Saves are debounced (500 ms) on the device that changed the value
   and ride along with the regular records upload.
 - Datetime is the unique key (matched at minute precision); a record's
