@@ -133,7 +133,26 @@
           </svg>
         </button>
       </header>
-      <button id="logout-btn" class="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
+      <div class="space-y-2">
+        <button id="export-btn" class="w-full px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 transition">
+          Exportovat data
+        </button>
+        <div class="flex gap-2">
+          <button id="import-btn" class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 transition">
+            Importovat data
+          </button>
+          <button id="import-help-btn" title="Nápověda k importu z kaloricketabulky.cz" class="px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-5 h-5">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </button>
+        </div>
+        <input type="file" id="import-input" accept="application/json,.json" class="hidden" />
+      </div>
+      <hr class="my-4" />
+      <button id="logout-btn" class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
         Odhlásit se
       </button>
       <button id="wipe-btn" class="mt-2 w-full px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded hover:bg-red-200 transition">
@@ -177,6 +196,10 @@
     const menuBtn = document.getElementById('menu-btn');
     const menuCloseBtn = document.getElementById('menu-close-btn');
     const menuOverlay = document.getElementById('menu-overlay');
+    const exportBtn = document.getElementById('export-btn');
+    const importBtn = document.getElementById('import-btn');
+    const importInput = document.getElementById('import-input');
+    const importHelpBtn = document.getElementById('import-help-btn');
     const loadingSection = document.getElementById('loading-section');
     const loadingMessageEl = document.getElementById('loading-message');
     const authSection = document.getElementById('auth-section');
@@ -714,6 +737,108 @@
     wipeBtn.addEventListener('click', () => {
       menuOverlay.classList.add('hidden');
       wipeAllData();
+    });
+
+    exportBtn.addEventListener('click', () => {
+      menuOverlay.classList.add('hidden');
+      const payload = JSON.stringify({ version: SCHEMA_VERSION, records, settings }, null, 2);
+      const blob = new Blob([payload], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const td = new Date();
+      const stamp = `${td.getFullYear()}-${String(td.getMonth() + 1).padStart(2, '0')}-${String(td.getDate()).padStart(2, '0')}`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `my-weight-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+
+    importBtn.addEventListener('click', () => importInput.click());
+
+    importHelpBtn.addEventListener('click', () => {
+      const td = new Date();
+      const todayCz = `${String(td.getDate()).padStart(2, '0')}.${String(td.getMonth() + 1).padStart(2, '0')}.${td.getFullYear()}`;
+      const url = `https://www.kaloricketabulky.cz/statistic/weight/01.01.1970/${todayCz}/get?format=json`;
+      alert(
+        'Jak získat data z kaloricketabulky.cz:\n\n' +
+        '1. Přihlaste se na https://www.kaloricketabulky.cz\n' +
+        '2. V prohlížeči otevřete tento odkaz (druhé datum je dnešní):\n' +
+        url + '\n' +
+        '3. Prohlížeč zobrazí nebo stáhne JSON soubor – uložte ho.\n' +
+        '4. V tomto menu klikněte na "Importovat data" a vyberte stažený soubor.\n\n' +
+        'Soubor exportovaný z této aplikace ("Exportovat data") můžete také naimportovat zpět.'
+      );
+    });
+
+    importInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      let parsed;
+      try {
+        parsed = JSON.parse(await file.text());
+      } catch (err) {
+        alert('Soubor není platný JSON.');
+        return;
+      }
+      let incoming;
+      if (parsed && (Array.isArray(parsed) || (typeof parsed === 'object' && Array.isArray(parsed.records)))) {
+        incoming = migrate(parsed).records;
+      } else if (parsed && parsed.data && Array.isArray(parsed.data.values)) {
+        incoming = parsed.data.values
+          .map(v => {
+            if (!v || typeof v.from !== 'number') return null;
+            const dt = new Date(v.from);
+            const w = typeof v.value === 'number' ? v.value : parseFloat(v.value);
+            if (Number.isNaN(dt.getTime()) || Number.isNaN(w)) return null;
+            return { datetime: dt.toISOString(), weight: w };
+          })
+          .filter(Boolean);
+      } else {
+        alert('Soubor nemá rozpoznaný formát (my-weight nebo kaloricketabulky.cz).');
+        return;
+      }
+      if (incoming.length === 0) {
+        alert('Soubor neobsahuje žádné platné záznamy.');
+        return;
+      }
+      const toAdd = [];
+      const seenMinutes = new Set(records
+        .filter(r => r && typeof r.datetime === 'string')
+        .map(r => isoToMinute(r.datetime)));
+      let skipped = 0;
+      for (const r of incoming) {
+        const min = isoToMinute(r.datetime);
+        if (seenMinutes.has(min)) { skipped++; continue; }
+        seenMinutes.add(min);
+        toAdd.push(r);
+      }
+      if (toAdd.length === 0) {
+        alert(`Všech ${incoming.length} záznamů ze souboru už existuje, nic se nepřidá.`);
+        return;
+      }
+      const msg = skipped > 0
+        ? `Naimportovat ${toAdd.length} nových záznamů? (${skipped} duplicitních bude přeskočeno.)`
+        : `Naimportovat ${toAdd.length} záznamů?`;
+      if (!confirm(msg)) return;
+      menuOverlay.classList.add('hidden');
+      showLoading('Importuji...');
+      const backup = records.slice();
+      records = records.concat(toAdd);
+      try {
+        await uploadRecords();
+        renderRecords();
+        renderChart();
+        showSection('app');
+        alert(`Naimportováno ${toAdd.length} záznamů.`);
+      } catch (err) {
+        records = backup;
+        console.error('Error importing records', err);
+        showSection('app');
+        alert('Chyba při importu: ' + describeDriveError(err));
+      }
     });
 
     function formatCzechDateTime(d) {
