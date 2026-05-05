@@ -276,21 +276,30 @@
       return privacyContentPromise;
     }
 
+    function showPrivacyOverlay() {
+      privacyOverlay.classList.remove('hidden');
+      document.body.classList.add('overflow-hidden');
+    }
+    function hidePrivacyOverlay() {
+      privacyOverlay.classList.add('hidden');
+      document.body.classList.remove('overflow-hidden');
+    }
+
     async function openPrivacy() {
       menuOverlay.classList.add('hidden');
       if (privacyContentLoaded) {
-        privacyOverlay.classList.remove('hidden');
+        showPrivacyOverlay();
         return;
       }
       const restoreSection = currentSection;
       showLoading('Načítám zásady...');
       await loadPrivacyContent();
       showSection(restoreSection);
-      privacyOverlay.classList.remove('hidden');
+      showPrivacyOverlay();
     }
     privacyMenuBtn.addEventListener('click', openPrivacy);
     privacyLoginLink.addEventListener('click', (e) => { e.preventDefault(); openPrivacy(); });
-    privacyCloseBtn.addEventListener('click', () => privacyOverlay.classList.add('hidden'));
+    privacyCloseBtn.addEventListener('click', hidePrivacyOverlay);
 
     function showLoading(msg = 'Načítám...') {
       loadingMessageEl.textContent = msg;
