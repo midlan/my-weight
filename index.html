@@ -410,6 +410,12 @@
       nowBtn.classList.add('hidden');
       datetimeInput.classList.remove('hidden');
       datetimeInput.focus();
+      // On touch devices (phones / tablets) open the picker immediately
+      // so the user doesn't have to tap a second time. Desktops with a
+      // mouse keep the previous behaviour: focus only, picker on demand.
+      if (window.matchMedia?.('(pointer: coarse)').matches) {
+        try { datetimeInput.showPicker(); } catch {}
+      }
     }
 
     function resetToNowMode() {
