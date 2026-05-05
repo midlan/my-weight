@@ -201,6 +201,7 @@
     let records = [];
     let settings = {};
     let fileId = null;
+    let revisionId = null;
     let recordsLoaded = false;
     let settingsSaveTimer = null;
 
@@ -209,7 +210,17 @@
       if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
       settingsSaveTimer = setTimeout(() => {
         settingsSaveTimer = null;
-        uploadRecords().catch(err => console.error('Failed to save settings', err));
+        const apply = () => {
+          settings.rangePreset = currentPreset;
+          return true;
+        };
+        uploadWithConflictRetry(apply).then(({ refetched }) => {
+          if (refetched) {
+            // Concurrent change pulled in fresh records — show them.
+            renderRecords();
+            renderChart();
+          }
+        }).catch(err => console.error('Failed to save settings', err));
       }, 500);
     }
 
@@ -573,6 +584,7 @@
       records = [];
       settings = {};
       fileId = null;
+      revisionId = null;
       recordsLoaded = false;
       currentPage = 0;
       editingIndex = -1;
@@ -649,10 +661,29 @@
     async function findAppDataFile() {
       const res = await gapi.client.drive.files.list({
         spaces: 'appDataFolder',
-        fields: 'files(id,name)',
+        fields: 'files(id,name,headRevisionId)',
         q: `name='${FILE_NAME}' and 'appDataFolder' in parents`
       });
       return res.result.files[0] || null;
+    }
+
+    async function fetchFromDrive() {
+      const file = await findAppDataFile();
+      if (!file) {
+        fileId = null;
+        revisionId = null;
+        records = [];
+        settings = {};
+        return { exists: false, migrated: false };
+      }
+      fileId = file.id;
+      revisionId = file.headRevisionId || null;
+      const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+      const parsed = JSON.parse(download.body || 'null');
+      const result = migrate(parsed);
+      records = result.records;
+      settings = result.settings;
+      return { exists: true, migrated: result.migrated };
     }
 
     function migrate(parsed) {
@@ -698,22 +729,33 @@
       return { records: normalized, settings: parsedSettings, migrated };
     }
 
+    function buildUploadError(res, body) {
+      const err = new Error(body?.error?.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.error = body?.error;
+      err.result = { error: body?.error };
+      return err;
+    }
+
     async function uploadRecords() {
       const payload = JSON.stringify({ version: SCHEMA_VERSION, records, settings });
       if (fileId) {
-        const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
-        const res = await fetch(updateUrl, {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: payload
-        });
-        if (!res.ok) throw await res.json();
+        const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,headRevisionId`;
+        const headers = {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        };
+        if (revisionId) headers['If-Match'] = revisionId;
+        const res = await fetch(updateUrl, { method: 'PATCH', headers, body: payload });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw buildUploadError(res, body);
+        }
+        const updated = await res.json();
+        revisionId = updated.headRevisionId || null;
       } else {
         const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
-        const createUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
+        const createUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,headRevisionId';
         const blob = new Blob([payload], { type: 'application/json' });
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -723,32 +765,54 @@
           headers: { Authorization: `Bearer ${accessToken}` },
           body: form
         });
-        if (!res.ok) throw await res.json();
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw buildUploadError(res, body);
+        }
         const created = await res.json();
         fileId = created.id;
+        revisionId = created.headRevisionId || null;
+      }
+    }
+
+    // Wraps uploadRecords() with optimistic-concurrency conflict handling.
+    // applyIntent() mutates records/settings deterministically and returns
+    // false when the user's intent is no longer applicable on the freshly-
+    // loaded state (e.g. the record being edited was deleted on another
+    // device, or the new datetime is now taken).
+    async function uploadWithConflictRetry(applyIntent, maxRetries = 3) {
+      let attempts = 0;
+      let refetched = false;
+      while (true) {
+        try {
+          await uploadRecords();
+          return { success: true, refetched };
+        } catch (err) {
+          const status = err?.status;
+          // 412 = If-Match precondition failed (concurrent edit on another device)
+          // 404 = file deleted on another device — fetchFromDrive resets fileId
+          if ((status === 412 || status === 404) && attempts < maxRetries) {
+            attempts++;
+            await fetchFromDrive();
+            refetched = true;
+            const cont = applyIntent();
+            if (!cont) return { success: false, refetched };
+            continue;
+          }
+          throw err;
+        }
       }
     }
 
     async function loadRecords() {
       try {
-        const file = await findAppDataFile();
-        let needsRewrite = false;
-        if (file) {
-          fileId = file.id;
-          const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
-          const parsed = JSON.parse(download.body || 'null');
-          const result = migrate(parsed);
-          records = result.records;
-          settings = result.settings;
-          needsRewrite = result.migrated;
-        } else {
-          fileId = null;
-          records = [];
-          settings = {};
-        }
+        const result = await fetchFromDrive();
         recordsLoaded = true;
-        if (needsRewrite && fileId) {
-          await uploadRecords();
+        if (result.migrated && fileId) {
+          // Best-effort rewrite of legacy data into the canonical envelope.
+          // A 412 here would mean another device wrote concurrently — drop it
+          // silently; the rewrite will be retried on the next load.
+          try { await uploadRecords(); } catch (e) { console.warn('Rewrite-on-load failed', e); }
         }
         applyRangePreset(effectivePreset());
         renderRecords();
@@ -783,9 +847,20 @@
     async function saveRecord(entry) {
       const originalBtnText = submitBtn.textContent;
       submitBtn.textContent = 'Ukládám...';
-      records.push(entry);
+      const apply = () => {
+        if (findDuplicateRecord(entry.datetime) !== -1) return false;
+        records.push(entry);
+        return true;
+      };
+      apply();
       try {
-        await uploadRecords();
+        const { success } = await uploadWithConflictRetry(apply);
+        if (!success) {
+          renderRecords();
+          renderChart();
+          alert('Záznam s tímto datem byl mezitím přidán z jiného zařízení; nebyl uložen.');
+          return;
+        }
         currentPage = 0;
         renderRecords();
         renderChart();
@@ -795,7 +870,7 @@
         }
       } catch (err) {
         console.error('Error saving record', err);
-        records.pop();
+        try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}
         alert('Chyba při ukládání: ' + describeDriveError(err));
       } finally {
         submitBtn.textContent = originalBtnText;
@@ -813,10 +888,18 @@
       showLoading('Mažu data...');
       try {
         if (fileId) {
-          await gapi.client.drive.files.delete({ fileId });
+          try {
+            await gapi.client.drive.files.delete({ fileId });
+          } catch (err) {
+            // 404 = already deleted on another device — fine
+            const status = err?.status || err?.result?.error?.code;
+            if (status !== 404) throw err;
+          }
         }
         fileId = null;
+        revisionId = null;
         records = [];
+        settings = {};
         currentPage = 0;
         editingIndex = -1;
         renderRecords();
@@ -922,17 +1005,32 @@
       if (!confirm(msg)) return;
       menuOverlay.classList.add('hidden');
       showLoading('Importuji...');
-      const backup = records.slice();
-      records = records.concat(toAdd);
+      const apply = () => {
+        const seen = new Set(records
+          .filter(r => r && typeof r.datetime === 'string')
+          .map(r => isoToMinute(r.datetime)));
+        let added = 0;
+        for (const r of toAdd) {
+          const min = isoToMinute(r.datetime);
+          if (seen.has(min)) continue;
+          seen.add(min);
+          records.push(r);
+          added++;
+        }
+        return true;
+      };
+      apply();
       try {
-        await uploadRecords();
+        await uploadWithConflictRetry(apply);
         renderRecords();
         renderChart();
         showSection('app');
         alert(`Naimportováno ${toAdd.length} záznamů.`);
       } catch (err) {
-        records = backup;
         console.error('Error importing records', err);
+        try { await fetchFromDrive(); } catch {}
+        renderRecords();
+        renderChart();
         showSection('app');
         alert('Chyba při importu: ' + describeDriveError(err));
       }
@@ -1194,21 +1292,26 @@
         ? `${formatCzechDateTime(new Date(r.datetime))} (${formatWeight(r.weight)} kg)`
         : `záznam ${idx}`;
       if (!confirm(`Smazat ${label}?`)) return;
+      const targetMin = isoToMinute(r.datetime);
+      const apply = () => {
+        const i = records.findIndex(x => x && isoToMinute(x.datetime) === targetMin);
+        if (i !== -1) records.splice(i, 1);
+        return true; // idempotent — already-gone is also success
+      };
       deletingIndex = idx;
       submitBtn.disabled = true;
       wipeBtn.disabled = true;
       renderRecords();
-      const removed = records.splice(idx, 1)[0];
+      apply();
       try {
-        await uploadRecords();
+        await uploadWithConflictRetry(apply);
         deletingIndex = -1;
         renderRecords();
         renderChart();
       } catch (err) {
         console.error('Error deleting record', err);
-        records.splice(idx, 0, removed);
         deletingIndex = -1;
-        renderRecords();
+        try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}
         alert('Chyba při mazání: ' + describeDriveError(err));
       } finally {
         submitBtn.disabled = false;
@@ -1232,22 +1335,37 @@
       const original = records[idx];
       const updated = { datetime: datetimeIso, weight: w };
       if (note) updated.note = note;
+      const oldMin = isoToMinute(original.datetime);
+      const apply = () => {
+        const i = records.findIndex(x => x && isoToMinute(x.datetime) === oldMin);
+        if (i === -1) return false; // original deleted on another device
+        // Block if the new datetime is now taken by some other record
+        if (findDuplicateRecord(datetimeIso, i) !== -1) return false;
+        records[i] = updated;
+        return true;
+      };
       records[idx] = updated;
       isSavingEdit = true;
       renderRecords();
       submitBtn.disabled = true;
       wipeBtn.disabled = true;
       try {
-        await uploadRecords();
+        const { success } = await uploadWithConflictRetry(apply);
         isSavingEdit = false;
+        if (!success) {
+          editingIndex = -1;
+          renderRecords();
+          renderChart();
+          alert('Záznam byl mezitím změněn z jiného zařízení; změna nebyla uložena.');
+          return;
+        }
         editingIndex = -1;
         renderRecords();
         renderChart();
       } catch (err) {
         console.error('Error editing record', err);
-        records[idx] = original;
         isSavingEdit = false;
-        renderRecords();
+        try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}
         const failedLi = historyList.querySelector(`li[data-idx="${idx}"]`);
         if (failedLi) {
           const fields = failedLi.querySelectorAll('input, textarea');

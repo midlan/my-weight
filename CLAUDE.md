@@ -36,9 +36,17 @@ if you add another origin, update the CSP `<meta>`.
 - File name: `weight_records.json` in `appDataFolder`.
 - The file is found by listing with
   `q: name='weight_records.json' and 'appDataFolder' in parents`.
-- After login, the entire file is loaded once into memory. Subsequent
-  saves only **upload** the in-memory array (no re-download). The
-  optimistic in-memory push is rolled back if the upload fails.
+- After login, the entire file is loaded once into memory along with
+  its `headRevisionId`. Subsequent saves PATCH the file and send
+  `If-Match: <revisionId>` so concurrent edits from another device
+  can't be silently overwritten — Drive returns **412** when the
+  revision is stale.
+- `uploadWithConflictRetry(applyIntent)` wraps `uploadRecords()`: on
+  412/404 it refetches the file, re-runs `applyIntent` on the fresh
+  in-memory state, and retries (up to 3 times). `applyIntent` returns
+  `false` to abort the retry when the user's change is no longer
+  applicable on the new state (e.g. the edited record was deleted on
+  another device, or the new datetime is now taken).
 
 ## Data file format — versioning and migration
 
@@ -150,8 +158,7 @@ if migration somehow lets one slip through.
 - **Sharding / compression.** Even 30 years of daily records is well
   under 1 MB; the proportional fix when the file gets large is
   per-year sharding, not gzip. Not needed yet.
-- **Offline mode / sync conflict resolution.** Single-user, single-tab
-  is the assumed usage. Last-writer-wins is fine.
+- **Offline mode.** Browser must be online to sync.
 - **A backend.** The whole point is that the developer cannot see the
   data; introducing a server would defeat that.
 - **Localization.** UI strings are Czech (`lang="cs"`). If you add
