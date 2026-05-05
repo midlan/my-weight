@@ -1112,18 +1112,26 @@
       };
     }
 
+    // True when `record`'s persisted values match the typed values
+    // (datetime compared at minute precision since the form input is
+    // minute-resolution; weight is exact equality; note is trimmed).
+    function recordMatchesValues(record, datetimeIso, weight, note) {
+      return !!record
+        && isoToMinute(record.datetime) === isoToMinute(datetimeIso)
+        && record.weight === weight
+        && (record.note || '') === (note || '');
+    }
+
     function editingRowHasChanges() {
       const inputs = readEditingRowInputs();
       if (!inputs) return false;
       const original = records[editingIndex];
       if (!original) return false;
-      const origDt = toLocalInputValue(new Date(original.datetime));
-      const origNote = original.note || '';
-      if (inputs.dtValue !== origDt) return true;
-      const typedWeight = parseFloat(inputs.weightValue);
-      if (Number.isNaN(typedWeight) || typedWeight !== original.weight) return true;
-      if ((inputs.noteValue || '') !== origNote) return true;
-      return false;
+      const dt = new Date(inputs.dtValue);
+      if (Number.isNaN(dt.getTime())) return true; // invalid input → treat as dirty
+      const w = parseFloat(inputs.weightValue);
+      if (Number.isNaN(w)) return true;
+      return !recordMatchesValues(original, dt.toISOString(), w, (inputs.noteValue || '').trim());
     }
 
     function restoreEditingDraft(draft) {
@@ -1456,12 +1464,20 @@
       const w = parseFloat(weightValue);
       if (Number.isNaN(w)) { alert('Neplatná hmotnost.'); return; }
       const datetimeIso = dt.toISOString();
+      const note = (noteValue || '').trim();
+      const original = records[idx];
+      // No-op save — typed values match the original record. Skip the
+      // upload entirely and silently leave edit mode.
+      if (recordMatchesValues(original, datetimeIso, w, note)) {
+        editingIndex = -1;
+        editingDatetimeMin = '';
+        renderRecords();
+        return;
+      }
       if (findDuplicateRecord(datetimeIso, idx) !== -1) {
         alert('Záznam s tímto datem již existuje.');
         return;
       }
-      const note = (noteValue || '').trim();
-      const original = records[idx];
       const updated = { datetime: datetimeIso, weight: w };
       if (note) updated.note = note;
       const oldMin = isoToMinute(original.datetime);
