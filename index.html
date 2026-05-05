@@ -326,13 +326,13 @@
     const weightIncrementBtn = document.getElementById('weight-increment');
     const noteInput = document.getElementById('note');
 
-    function adjustWeight(delta) {
-      const cur = parseFloat(weightInput.value);
+    function adjustWeight(input, delta) {
+      const cur = parseFloat(input.value);
       const base = Number.isNaN(cur) ? 0 : cur;
-      weightInput.value = (Math.round((base + delta) * 10) / 10).toFixed(1);
+      input.value = (Math.round((base + delta) * 10) / 10).toFixed(1);
     }
-    weightDecrementBtn.addEventListener('click', () => adjustWeight(-0.1));
-    weightIncrementBtn.addEventListener('click', () => adjustWeight(0.1));
+    weightDecrementBtn.addEventListener('click', () => adjustWeight(weightInput, -0.1));
+    weightIncrementBtn.addEventListener('click', () => adjustWeight(weightInput, 0.1));
     const paginationEl = document.getElementById('pagination');
     const prevPageBtn = document.getElementById('prev-page');
     const nextPageBtn = document.getElementById('next-page');
@@ -1265,7 +1265,23 @@
         wInput.type = 'number';
         wInput.step = '0.1';
         wInput.value = String(r.weight);
-        wInput.className = 'w-24 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm text-right';
+        wInput.className = 'flex-1 min-w-0 px-1 py-1 text-sm text-center focus:outline-none';
+
+        const wDecrement = document.createElement('button');
+        wDecrement.type = 'button';
+        wDecrement.title = 'Snížit';
+        wDecrement.className = 'px-1 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-r border-gray-300';
+        wDecrement.textContent = '−';
+
+        const wIncrement = document.createElement('button');
+        wIncrement.type = 'button';
+        wIncrement.title = 'Zvýšit';
+        wIncrement.className = 'px-1 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-l border-gray-300';
+        wIncrement.textContent = '+';
+
+        const wStepper = document.createElement('div');
+        wStepper.className = 'w-24 flex border border-gray-300 rounded shadow-sm overflow-hidden bg-white';
+        wStepper.append(wDecrement, wInput, wIncrement);
 
         const editNoteInput = document.createElement('textarea');
         editNoteInput.rows = 2;
@@ -1278,6 +1294,8 @@
           dtInput.disabled = true;
           editNoteInput.disabled = true;
           wInput.disabled = true;
+          wDecrement.disabled = true;
+          wIncrement.disabled = true;
           actions = document.createElement('span');
           actions.className = 'text-sm text-gray-500 px-2 shrink-0 whitespace-nowrap';
           actions.textContent = 'Ukládám...';
@@ -1287,6 +1305,9 @@
 
           const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 hover:bg-gray-200');
           cancelBtn.addEventListener('click', () => { editingIndex = -1; editingDatetimeMin = ''; renderRecords(); });
+
+          wDecrement.addEventListener('click', () => adjustWeight(wInput, -0.1));
+          wIncrement.addEventListener('click', () => adjustWeight(wInput, 0.1));
 
           [dtInput, wInput].forEach(inp => {
             inp.addEventListener('keydown', (e) => {
@@ -1306,7 +1327,7 @@
 
         const topRow = document.createElement('div');
         topRow.className = 'flex items-center gap-2';
-        topRow.append(dtInput, wInput, actions);
+        topRow.append(dtInput, wStepper, actions);
         li.append(topRow, editNoteInput);
       } else {
         const isExpanded = !!r.note && expandedNotes.has(r);
