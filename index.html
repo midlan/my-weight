@@ -1376,7 +1376,20 @@
             x: {
               type: 'time',
               min: isFinite(fromTs) ? fromTs : undefined,
-              max: isFinite(toTs) ? toTs : undefined
+              max: isFinite(toTs) ? toTs : undefined,
+              ticks: {
+                callback: function (value) {
+                  const d = new Date(value);
+                  const unit = this._unit;
+                  let opts;
+                  if (unit === 'year') opts = { year: 'numeric' };
+                  else if (unit === 'quarter' || unit === 'month') opts = { month: 'short', year: '2-digit' };
+                  else if (unit === 'week' || unit === 'day') opts = { day: 'numeric', month: 'short' };
+                  else if (unit === 'hour' || unit === 'minute' || unit === 'second') opts = { hour: 'numeric', minute: '2-digit' };
+                  else opts = { day: 'numeric', month: 'short' };
+                  return new Intl.DateTimeFormat(undefined, opts).format(d);
+                }
+              }
             },
             y: { title: { display: true, text: 'kg' } }
           }
