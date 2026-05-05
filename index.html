@@ -813,11 +813,16 @@
     // loaded state (e.g. the record being edited was deleted on another
     // device, or the new datetime is now taken).
     //
-    // The happy path is 1 request (PATCH). On conflict it's exactly 3:
-    // the pre-flight metadata GET, the content GET to refetch, and the
-    // PATCH itself. We skip a second pre-flight after refetch because
-    // we just observed the current revisionId there's nothing newer to
-    // check against — Drive ignores If-Match either way.
+    // Network cost:
+    //   no file yet (first save) : POST                        (1 req)
+    //   no conflict              : GET headRevisionId, PATCH   (2 req)
+    //   conflict resolved        : GET headRevisionId,
+    //                              GET alt=media,
+    //                              PATCH                       (3 req)
+    //
+    // We skip a second pre-flight after refetch because we just observed
+    // the current revisionId — there's nothing newer to check against
+    // (Drive's PATCH ignores If-Match either way).
     async function uploadWithConflictRetry(applyIntent, maxRetries = 3) {
       let attempts = 0;
       let didRefetch = false;
