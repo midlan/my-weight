@@ -357,6 +357,7 @@
     let chart = null;
 
     let editingIndex = -1;
+    let editingDatetimeMin = '';
     let isSavingEdit = false;
     let deletingIndex = -1;
     let nowMode = true;
@@ -588,6 +589,7 @@
       recordsLoaded = false;
       currentPage = 0;
       editingIndex = -1;
+      editingDatetimeMin = '';
       resetToNowMode();
       showSection('auth');
       historyList.innerHTML = '';
@@ -953,6 +955,7 @@
         settings = {};
         currentPage = 0;
         editingIndex = -1;
+        editingDatetimeMin = '';
         renderRecords();
         renderChart();
         showSection('app');
@@ -1096,6 +1099,45 @@
       return Number(w).toLocaleString(undefined, { maximumFractionDigits: 10 });
     }
 
+    function readEditingRowInputs() {
+      if (editingIndex === -1) return null;
+      const li = historyList.querySelector(`li[data-idx="${editingIndex}"]`);
+      if (!li) return null;
+      const fields = li.querySelectorAll('input, textarea');
+      if (fields.length < 3) return null;
+      return {
+        dtValue: fields[0].value,
+        weightValue: fields[1].value,
+        noteValue: fields[2].value
+      };
+    }
+
+    function editingRowHasChanges() {
+      const inputs = readEditingRowInputs();
+      if (!inputs) return false;
+      const original = records[editingIndex];
+      if (!original) return false;
+      const origDt = toLocalInputValue(new Date(original.datetime));
+      const origNote = original.note || '';
+      if (inputs.dtValue !== origDt) return true;
+      const typedWeight = parseFloat(inputs.weightValue);
+      if (Number.isNaN(typedWeight) || typedWeight !== original.weight) return true;
+      if ((inputs.noteValue || '') !== origNote) return true;
+      return false;
+    }
+
+    function restoreEditingDraft(draft) {
+      if (!draft || editingIndex === -1) return;
+      const li = historyList.querySelector(`li[data-idx="${editingIndex}"]`);
+      if (!li) return;
+      const fields = li.querySelectorAll('input, textarea');
+      if (fields.length >= 3) {
+        fields[0].value = draft.dtValue;
+        fields[1].value = draft.weightValue;
+        fields[2].value = draft.noteValue;
+      }
+    }
+
     function wrapTooltipNote(text, maxChars) {
       const lines = [];
       for (const rawLine of String(text).split('\n')) {
@@ -1146,6 +1188,18 @@
     }
 
     function renderRecords() {
+      // Re-resolve editingIndex from the persistent datetime fingerprint —
+      // the records array can be reshuffled by deletes / conflict refetches
+      // and editingIndex by raw position would silently point at a
+      // different record (or out of bounds).
+      if (editingIndex !== -1) {
+        if (editingDatetimeMin) {
+          editingIndex = records.findIndex(r => r && isoToMinute(r.datetime) === editingDatetimeMin);
+          if (editingIndex === -1) editingDatetimeMin = '';
+        } else {
+          editingIndex = -1;
+        }
+      }
       historyList.innerHTML = '';
       if (records.length === 0) {
         const li = document.createElement('li');
@@ -1224,7 +1278,7 @@
           saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value, editNoteInput.value));
 
           const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 hover:bg-gray-200');
-          cancelBtn.addEventListener('click', () => { editingIndex = -1; renderRecords(); });
+          cancelBtn.addEventListener('click', () => { editingIndex = -1; editingDatetimeMin = ''; renderRecords(); });
 
           [dtInput, wInput].forEach(inp => {
             inp.addEventListener('keydown', (e) => {
@@ -1272,9 +1326,24 @@
           spinnerBtn.innerHTML = '<div class="w-5 h-5 border-2 border-gray-300 border-t-red-600 rounded-full animate-spin"></div>';
 
           actions.append(editBtn, spinnerBtn);
-        } else if (editingIndex === -1 && deletingIndex === -1) {
+        } else if (deletingIndex === -1) {
           const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 hover:bg-blue-50 hover:text-blue-600');
-          editBtn.addEventListener('click', () => { editingIndex = idx; renderRecords(); });
+          editBtn.addEventListener('click', () => {
+            if (editingIndex !== -1 && editingIndex !== idx) {
+              if (editingRowHasChanges()) {
+                const orig = records[editingIndex];
+                const label = orig && orig.datetime
+                  ? `${formatCzechDateTime(new Date(orig.datetime))} (${formatWeight(orig.weight)} kg)`
+                  : '';
+                alert('Nejprve uložte nebo zrušte úpravy záznamu' + (label ? ': ' + label : '') + '.');
+                return;
+              }
+              // No changes — silently abandon current edit and switch.
+            }
+            editingIndex = idx;
+            editingDatetimeMin = isoToMinute(r.datetime);
+            renderRecords();
+          });
 
           const delBtn = iconButton(ICON_TRASH, 'Smazat', 'text-gray-500 hover:bg-red-50 hover:text-red-600');
           delBtn.addEventListener('click', () => deleteRecord(idx));
@@ -1343,6 +1412,10 @@
         ? `${formatCzechDateTime(new Date(r.datetime))} (${formatWeight(r.weight)} kg)`
         : `záznam ${idx}`;
       if (!confirm(`Smazat ${label}?`)) return;
+      // Snapshot the typed values from another row's edit mode so the
+      // delete-induced re-render doesn't wipe the user's in-progress
+      // edit. They get restored after each renderRecords() below.
+      const editingDraft = (editingIndex !== -1 && editingIndex !== idx) ? readEditingRowInputs() : null;
       const targetMin = isoToMinute(r.datetime);
       const apply = () => {
         const i = records.findIndex(x => x && isoToMinute(x.datetime) === targetMin);
@@ -1353,16 +1426,21 @@
       submitBtn.disabled = true;
       wipeBtn.disabled = true;
       renderRecords();
+      restoreEditingDraft(editingDraft);
       apply();
       try {
         await uploadWithConflictRetry(apply);
         deletingIndex = -1;
         renderRecords();
+        restoreEditingDraft(editingDraft);
         renderChart();
       } catch (err) {
         console.error('Error deleting record', err);
         deletingIndex = -1;
-        try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}
+        try { await fetchFromDrive(); } catch {}
+        renderRecords();
+        restoreEditingDraft(editingDraft);
+        renderChart();
         alert('Chyba při mazání: ' + describeDriveError(err));
       } finally {
         submitBtn.disabled = false;
@@ -1393,9 +1471,11 @@
         // Block if the new datetime is now taken by some other record
         if (findDuplicateRecord(datetimeIso, i) !== -1) return false;
         records[i] = updated;
+        editingDatetimeMin = isoToMinute(updated.datetime);
         return true;
       };
       records[idx] = updated;
+      editingDatetimeMin = isoToMinute(updated.datetime);
       isSavingEdit = true;
       renderRecords();
       submitBtn.disabled = true;
@@ -1405,12 +1485,14 @@
         isSavingEdit = false;
         if (!success) {
           editingIndex = -1;
+          editingDatetimeMin = '';
           renderRecords();
           renderChart();
           alert('Záznam byl mezitím změněn z jiného zařízení; změna nebyla uložena.');
           return;
         }
         editingIndex = -1;
+        editingDatetimeMin = '';
         renderRecords();
         renderChart();
       } catch (err) {
