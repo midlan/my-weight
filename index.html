@@ -667,28 +667,6 @@
       return res.result.files[0] || null;
     }
 
-    // Fetches the raw JSON file body via plain fetch() instead of going
-    // through gapi.client. The content.googleapis.com host that gapi
-    // routes alt=media downloads through wraps the body as base64 with
-    // Content-Type: text/plain (a content-sniffing safety measure;
-    // see x-goog-safety-content-type / x-goog-safety-encoding response
-    // headers). gapi then exposes the decoded bytes as res.body in
-    // Latin-1 form, which mishandles multi-byte UTF-8. Going direct to
-    // www.googleapis.com bypasses both: a smaller wire (~33% before
-    // gzip), no client-side base64 decode, and proper UTF-8 via
-    // res.text().
-    async function downloadFileText() {
-      const res = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw buildUploadError(res, body);
-      }
-      return res.text();
-    }
-
     async function fetchFromDrive() {
       const file = await findAppDataFile();
       if (!file) {
@@ -700,8 +678,8 @@
       }
       fileId = file.id;
       revisionId = file.headRevisionId || null;
-      const text = await downloadFileText();
-      const parsed = JSON.parse(text || 'null');
+      const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+      const parsed = JSON.parse(download.body || 'null');
       const result = migrate(parsed);
       records = result.records;
       settings = result.settings;
@@ -714,8 +692,8 @@
     // caller is responsible for setting revisionId — typically reusing
     // the value just observed by the pre-flight metadata GET.
     async function fetchContentByFileId() {
-      const text = await downloadFileText();
-      const parsed = JSON.parse(text || 'null');
+      const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+      const parsed = JSON.parse(download.body || 'null');
       const result = migrate(parsed);
       records = result.records;
       settings = result.settings;
