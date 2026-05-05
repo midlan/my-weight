@@ -11,11 +11,19 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   is scoped per-OAuth-client, so only this app can read or write it.
 - The app developer cannot see user data — there is no server.
 - Users can add records for any date (including years in the past),
-  view a chart, and wipe everything with one click.
+  edit / delete individual entries, view a chart, import data from
+  another my-weight account or from kaloricketabulky.cz, export their
+  data as JSON, and wipe everything (typed-confirmation).
 
 ## File layout
 
 - `index.html` — the entire app (markup + Tailwind CDN + inline JS).
+- `privacy.html` — standalone privacy policy page served at the
+  same origin. Referenced from Google's OAuth consent screen and
+  fetched lazily into an in-app modal so the SPA isn't navigated
+  away. The content block is marked with `id="privacy-content"`
+  for the loader to extract; everything else (Tailwind shell,
+  back link) is page-only chrome.
 - `CLAUDE.md` — this file.
 
 ## Tech / dependencies (all CDN, no install)
@@ -56,6 +64,15 @@ if you add another origin, update the CSP `<meta>`.
 - Race window between the pre-flight check and the PATCH is
   millisecond-scale and accepted as a known limit; for a single-user
   weight tracker it is small enough to ignore.
+- File **content** downloads (`alt=media`) go through gapi
+  (`gapi.client.drive.files.get({fileId, alt:'media'})`) which routes
+  through `content.googleapis.com`. That host is a CDN-optimized
+  content edge — measurably faster (~hundreds of ms) than direct
+  `fetch()` to `www.googleapis.com` even though the body comes back
+  base64-wrapped (a content-sniffing safety measure exposed via
+  `x-goog-safety-encoding: base64`). Metadata calls (list,
+  headRevisionId-only, delete) also stay on gapi for its auth /
+  discovery handling.
 
 ## Data file format — versioning and migration
 
@@ -143,24 +160,99 @@ if migration somehow lets one slip through.
 
 ## Other implementation notes
 
-- **In-memory cache** (`records`, `fileId`, `recordsLoaded`) is reset on
-  logout. The wipe action also resets it locally and deletes the Drive
-  file via `drive.files.delete`.
-- **History list** is paginated (default 50, options 25/50/100/250/500,
-  persisted in `localStorage` under `my-weight:pageSize`). Sorted
-  newest-first; jumps back to page 1 after a save so the new entry is
+- **In-memory cache** (`records`, `settings`, `fileId`, `revisionId`,
+  `recordsLoaded`) is reset on logout. The wipe action also resets it
+  locally and deletes the Drive file via `drive.files.delete`.
+- **Sections** (`#loading-section`, `#auth-section`, `#app-section`)
+  are mutually-exclusive panes inside the card. `showSection(name)`
+  toggles them via inline `style.display` instead of a `.hidden`
+  class so a `display: flex` (used for the min-h centering trick)
+  doesn't override hide. Both loading and auth sections share
+  `min-h-36` so the card stays the same height across the
+  loading→auth handover; eliminates a card-resize blink.
+- **Hamburger menu** (`#menu-overlay`) covers logout, wipe, import,
+  export, and a link to the privacy policy. The menu button itself
+  is only revealed when `showSection('app')` runs. Logout / wipe
+  close the menu first so the underlying section transition is
   visible.
-- **Chart** uses Chart.js's `time` scale. Default range is the last 1
-  year. Quick-filter buttons set the range to 7d/30d/3m/6m/1y/all
-  (`all` runs from the oldest record in memory). Manual `from`/`to`
-  date inputs trigger a re-render. Point markers hide above 200 points
-  to keep dense ranges readable.
-- **Status line** under the form shows transient messages (`Načítám...`,
-  `Ukládám...`, errors). The submit button is disabled while a save is
-  in flight; the wipe button is also disabled during its own request.
+- **Privacy modal** (`#privacy-overlay`) is a separate fixed-position
+  overlay (z-50, body-scroll-locked while open) that lazy-loads the
+  `privacy-content` element from `privacy.html` via `fetch()` on
+  first open and caches the parsed DOM children. Loading uses the
+  same loading-section spinner during the fetch so first-open
+  doesn't blink. Subsequent opens are instant from the cache. The
+  consent line under the login button and the menu button both
+  trigger the same `openPrivacy()` flow.
+- **History list** is paginated (default 10; options
+  10/25/50/100/250/500). The page-size selector and prev/next
+  controls sit *above* the list. Sorted newest-first; jumps back
+  to page 1 after a save. **Page size is not persisted** — every
+  page load starts at 10. The list itself uses normal block flow
+  (no inner `overflow-auto`) so the page scrolls naturally.
+- **Chart** uses Chart.js's `time` scale. Default for new users is
+  `7d`; the last preset is persisted via `settings.rangePreset`
+  (synced through Drive, so devices stay in sync). Quick-filter
+  buttons set the range to 7d/30d/3m/6m/1y/all (`all` runs from
+  the oldest record in memory). The active preset button is
+  highlighted. Manual `from`/`to` date inputs trigger a re-render
+  and clear the highlighted preset (the manual range is local-only,
+  not synced). Tick labels and tooltip dates use
+  `Intl.DateTimeFormat(undefined, ...)` for the user's browser
+  locale. Point markers hide above 200 points; chart animation is
+  disabled to avoid tweening on each save.
+- **Auth flow**: `attemptAutoLogin()` only triggers a silent token
+  request when `localStorage` has a prior token record (even if
+  expired) — first-visit / fresh-incognito users skip silent and
+  see the login button immediately, avoiding the popup-blocked
+  warning that browsers throw on auto-fired popups without a user
+  gesture. A token-client `error_callback` plus an 8-second timeout
+  bail to the auth screen if the silent request hangs.
+- **New-record form**: a "teď" button is shown by default; clicking
+  it swaps in a `datetime-local` input. On touch devices
+  (`matchMedia('(pointer: coarse)')`) the input also fires
+  `showPicker()` so the picker opens with a single tap. Saving in
+  "teď" mode stamps `new Date().toISOString()` at submit time;
+  saving in custom mode keeps the entered datetime in the input
+  after success so adding back-dated days in a row is one
+  date-bump per save. The submit button shows `Ukládám...` inline
+  during the upload (no layout shift). Form blocks submission
+  while a row is in edit mode.
+- **Edit / delete in the history**: each row has icon buttons
+  (edit, trash). Edit toggles the row to a flex-col layout with
+  inputs for [datetime, weight] on top and a full-width
+  `<textarea>` for the note below; cancel button restores. Delete
+  shows an in-row spinner replacing the trash icon while the
+  upload runs. Both actions fall through `uploadWithConflictRetry`
+  so concurrent edits on another device are preserved.
+- **Import / export** (in the menu): export downloads the current
+  Drive payload as `my-weight-YYYY-MM-DD.json`. Import auto-detects
+  the format — native (versioned envelope or bare-array legacy)
+  passes through `migrate()`; kaloricketabulky.cz exports are
+  recognized via `parsed.data.values` (each item is
+  `{from: epoch_ms, value: kg}`); only `values` is read, the
+  `target` array (goal weight) is ignored. Duplicates at minute
+  precision are skipped; the user confirms the count. A "?" button
+  next to "Importovat data" pops a `prompt()` with copy-able
+  instructions including the kaloricketabulky URL pre-filled with
+  today's date.
+- **Errors and progress**: errors are surfaced via `alert()` (no
+  status-line layout shift); transient progress messages reuse the
+  loading-section spinner where appropriate (`Mažu data...`,
+  `Importuji...`, `Načítám zásady...`). Edit-row save failures keep
+  the row in edit mode and restore the typed values into the
+  inputs so the user can retry without re-typing.
+- **Optimistic concurrency**: saves go through
+  `uploadWithConflictRetry(applyIntent)`. Each save function passes
+  an `applyIntent` callback that mutates `records`/`settings`
+  deterministically. On conflict the helper refetches and replays
+  the callback against the fresh state. `applyIntent` returns
+  `false` to abort retry when the change is no longer applicable
+  (e.g. `saveEdit`'s record was deleted on another device, or
+  `saveRecord`'s datetime is now taken). Conflict outcomes per
+  action are mapped to specific Czech alerts.
 - **Quota errors**: the Drive API reason `storageQuotaExceeded` is
-  mapped to a friendly Czech message in `describeDriveError()`. Other
-  errors fall through to the API message.
+  mapped to a friendly Czech message in `describeDriveError()`.
+  Other errors fall through to the API message.
 
 ## Non-goals (deliberate)
 
@@ -175,5 +267,8 @@ if migration somehow lets one slip through.
 
 ## Branch convention
 
-Development happens on `claude/review-weight-tracker-app-doTLb` (and
-similarly named feature branches). `main` is the deploy target.
+`main` is the deploy target — GitHub Pages serves it directly. Most
+edits land on `main` directly (the project is single-author and the
+deploy pipeline is fast). Use feature branches + PRs for larger
+shape-changing work or when collaborating; otherwise commit and
+push straight to `main`.
