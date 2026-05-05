@@ -71,7 +71,7 @@ This is the part most likely to bite a future change, so read carefully.
   preferences (chart range preset, etc.). Adding new keys here is a
   forward-compatible change; readers ignore unknown keys, missing
   settings fall back to defaults. Currently:
-  - `rangePreset` — one of `7d`, `30d`, `3m`, `6m`, `1y`, `5y`, `all`.
+  - `rangePreset` — one of `7d`, `30d`, `3m`, `6m`, `1y`, `all`.
   Saves are debounced (500 ms) on the device that changed the value
   and ride along with the regular records upload.
 - Datetime is the unique key (matched at minute precision); a record's
@@ -134,7 +134,7 @@ if migration somehow lets one slip through.
   newest-first; jumps back to page 1 after a save so the new entry is
   visible.
 - **Chart** uses Chart.js's `time` scale. Default range is the last 1
-  year. Quick-filter buttons set the range to 7d/30d/6m/1y/5y/all
+  year. Quick-filter buttons set the range to 7d/30d/3m/6m/1y/all
   (`all` runs from the oldest record in memory). Manual `from`/`to`
   date inputs trigger a re-render. Point markers hide above 200 points
   to keep dense ranges readable.

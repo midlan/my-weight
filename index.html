@@ -63,7 +63,6 @@
         <button type="button" data-range="3m" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">3 měsíce</button>
         <button type="button" data-range="6m" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">6 měsíců</button>
         <button type="button" data-range="1y" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">1 rok</button>
-        <button type="button" data-range="5y" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">5 let</button>
         <button type="button" data-range="all" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Vše</button>
       </div>
       <div class="flex flex-wrap gap-3 text-sm mb-2">
@@ -330,7 +329,7 @@
     const pageSizeSelect = document.getElementById('page-size');
 
     const ALLOWED_PAGE_SIZES = [10, 25, 50, 100, 250, 500];
-    const ALLOWED_PRESETS = ['7d', '30d', '3m', '6m', '1y', '5y', 'all'];
+    const ALLOWED_PRESETS = ['7d', '30d', '3m', '6m', '1y', 'all'];
 
     function effectivePreset() {
       const stored = settings.rangePreset;
@@ -442,7 +441,6 @@
         case '3m': from.setMonth(from.getMonth() - 3); break;
         case '6m': from.setMonth(from.getMonth() - 6); break;
         case '1y': from.setFullYear(from.getFullYear() - 1); break;
-        case '5y': from.setFullYear(from.getFullYear() - 5); break;
         case 'all':
           if (records.length > 0) {
             const oldest = records.reduce((min, r) => {
