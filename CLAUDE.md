@@ -37,16 +37,25 @@ if you add another origin, update the CSP `<meta>`.
 - The file is found by listing with
   `q: name='weight_records.json' and 'appDataFolder' in parents`.
 - After login, the entire file is loaded once into memory along with
-  its `headRevisionId`. Subsequent saves PATCH the file and send
-  `If-Match: <revisionId>` so concurrent edits from another device
-  can't be silently overwritten — Drive returns **412** when the
-  revision is stale.
-- `uploadWithConflictRetry(applyIntent)` wraps `uploadRecords()`: on
-  412/404 it refetches the file, re-runs `applyIntent` on the fresh
-  in-memory state, and retries (up to 3 times). `applyIntent` returns
-  `false` to abort the retry when the user's change is no longer
-  applicable on the new state (e.g. the edited record was deleted on
-  another device, or the new datetime is now taken).
+  its `headRevisionId`. Subsequent saves do an explicit pre-flight
+  metadata fetch (`drive.files.get` with `fields: 'headRevisionId'`)
+  and compare against the cached revisionId — Drive API v3 silently
+  ignores the standard `If-Match` HTTP header, so optimistic
+  concurrency has to be done client-side.
+- `uploadWithConflictRetry(applyIntent)` wraps `uploadRecords()`: if
+  the remote revision differs (or the file is gone) it refetches the
+  file, re-runs `applyIntent` on the fresh in-memory state, and
+  retries (up to 3 times). `applyIntent` returns `false` to abort the
+  retry when the user's change is no longer applicable on the new
+  state (e.g. the edited record was deleted on another device, or the
+  new datetime is now taken).
+- After a successful PATCH/POST the response includes the new
+  `headRevisionId` (we ask for it via `?fields=id,headRevisionId`)
+  and the local `revisionId` is updated, so the next save can
+  pre-flight against the freshest known revision.
+- Race window between the pre-flight check and the PATCH is
+  millisecond-scale and accepted as a known limit; for a single-user
+  weight tracker it is small enough to ignore.
 
 ## Data file format — versioning and migration
 

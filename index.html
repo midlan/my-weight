@@ -745,7 +745,6 @@
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         };
-        if (revisionId) headers['If-Match'] = revisionId;
         const res = await fetch(updateUrl, { method: 'PATCH', headers, body: payload });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -775,6 +774,26 @@
       }
     }
 
+    // Drive API v3 ignores the If-Match header, so we implement optimistic
+    // concurrency manually: before each PATCH, fetch only the headRevisionId
+    // and compare with what we cached on load. Any mismatch (or 404 if the
+    // file was deleted) means another device wrote to the file, so we refetch
+    // its content and re-run the user's intent on the fresh state.
+    async function readRemoteRevision() {
+      if (!fileId) return null;
+      try {
+        const res = await gapi.client.drive.files.get({
+          fileId,
+          fields: 'headRevisionId'
+        });
+        return res.result?.headRevisionId || null;
+      } catch (err) {
+        const status = err?.status || err?.result?.error?.code;
+        if (status === 404) return null;
+        throw err;
+      }
+    }
+
     // Wraps uploadRecords() with optimistic-concurrency conflict handling.
     // applyIntent() mutates records/settings deterministically and returns
     // false when the user's intent is no longer applicable on the freshly-
@@ -784,14 +803,13 @@
       let attempts = 0;
       let refetched = false;
       while (true) {
-        try {
-          await uploadRecords();
-          return { success: true, refetched };
-        } catch (err) {
-          const status = err?.status;
-          // 412 = If-Match precondition failed (concurrent edit on another device)
-          // 404 = file deleted on another device — fetchFromDrive resets fileId
-          if ((status === 412 || status === 404) && attempts < maxRetries) {
+        if (fileId) {
+          const remoteRev = await readRemoteRevision();
+          // Mismatch (or file deleted) → refetch and re-apply intent
+          if (remoteRev !== revisionId) {
+            if (attempts >= maxRetries) {
+              throw new Error('Příliš mnoho konfliktů při ukládání');
+            }
             attempts++;
             await fetchFromDrive();
             refetched = true;
@@ -799,8 +817,9 @@
             if (!cont) return { success: false, refetched };
             continue;
           }
-          throw err;
         }
+        await uploadRecords();
+        return { success: true, refetched };
       }
     }
 
