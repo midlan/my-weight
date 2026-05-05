@@ -65,14 +65,16 @@ if you add another origin, update the CSP `<meta>`.
   millisecond-scale and accepted as a known limit; for a single-user
   weight tracker it is small enough to ignore.
 - File **content** downloads (`alt=media`) go through gapi
-  (`gapi.client.drive.files.get({fileId, alt:'media'})`) which routes
-  through `content.googleapis.com`. That host is a CDN-optimized
-  content edge — measurably faster (~hundreds of ms) than direct
-  `fetch()` to `www.googleapis.com` even though the body comes back
-  base64-wrapped (a content-sniffing safety measure exposed via
-  `x-goog-safety-encoding: base64`). Metadata calls (list,
-  headRevisionId-only, delete) also stay on gapi for its auth /
-  discovery handling.
+  (`gapi.client.drive.files.get({fileId, alt:'media'})`). The body
+  comes back base64-wrapped — `content.googleapis.com` applies a
+  content-sniffing safety wrapper exposed via
+  `x-goog-safety-encoding: base64` — but the size penalty is in
+  the microsecond range for our file sizes. Sticking to the
+  Google-provided helpers keeps the call site auth/upgrade-friendly;
+  rewriting it as a direct `fetch()` to `www.googleapis.com`
+  produced no measurable speedup in testing and forfeits gapi's
+  built-in auth handling. Metadata calls (list, headRevisionId-only,
+  delete) also stay on gapi for the same reasons.
 
 ## Data file format — versioning and migration
 
