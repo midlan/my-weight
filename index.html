@@ -686,6 +686,19 @@
       return { exists: true, migrated: result.migrated };
     }
 
+    // Refetch content for an already-known fileId. Skips the list query
+    // since we already have the id, so a conflict-resolution path can
+    // do exactly 1 GET (content) instead of 2 (list + content). The
+    // caller is responsible for setting revisionId — typically reusing
+    // the value just observed by the pre-flight metadata GET.
+    async function fetchContentByFileId() {
+      const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+      const parsed = JSON.parse(download.body || 'null');
+      const result = migrate(parsed);
+      records = result.records;
+      settings = result.settings;
+    }
+
     function migrate(parsed) {
       let rawRecords;
       let parsedSettings = {};
@@ -799,27 +812,41 @@
     // false when the user's intent is no longer applicable on the freshly-
     // loaded state (e.g. the record being edited was deleted on another
     // device, or the new datetime is now taken).
+    //
+    // The happy path is 1 request (PATCH). On conflict it's exactly 3:
+    // the pre-flight metadata GET, the content GET to refetch, and the
+    // PATCH itself. We skip a second pre-flight after refetch because
+    // we just observed the current revisionId there's nothing newer to
+    // check against — Drive ignores If-Match either way.
     async function uploadWithConflictRetry(applyIntent, maxRetries = 3) {
       let attempts = 0;
-      let refetched = false;
+      let didRefetch = false;
       while (true) {
-        if (fileId) {
+        if (fileId && !didRefetch) {
           const remoteRev = await readRemoteRevision();
-          // Mismatch (or file deleted) → refetch and re-apply intent
           if (remoteRev !== revisionId) {
             if (attempts >= maxRetries) {
               throw new Error('Příliš mnoho konfliktů při ukládání');
             }
             attempts++;
-            await fetchFromDrive();
-            refetched = true;
+            if (remoteRev === null) {
+              // File deleted on another device; treat as starting from empty.
+              fileId = null;
+              revisionId = null;
+              records = [];
+              settings = {};
+            } else {
+              await fetchContentByFileId();
+              revisionId = remoteRev;
+            }
+            didRefetch = true;
             const cont = applyIntent();
-            if (!cont) return { success: false, refetched };
+            if (!cont) return { success: false, refetched: true };
             continue;
           }
         }
         await uploadRecords();
-        return { success: true, refetched };
+        return { success: true, refetched: didRefetch };
       }
     }
 
