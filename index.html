@@ -1259,13 +1259,13 @@
         const dtInput = document.createElement('input');
         dtInput.type = 'datetime-local';
         dtInput.value = toLocalInputValue(new Date(r.datetime));
-        dtInput.className = 'flex-[8_1_0%] min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
+        dtInput.className = 'flex-[3_1_0%] min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
 
         const wInput = document.createElement('input');
         wInput.type = 'number';
         wInput.step = '0.1';
         wInput.value = String(r.weight);
-        wInput.className = 'flex-[4_1_0%] min-w-0 px-1 py-1 text-sm text-center focus:outline-none';
+        wInput.className = 'flex-[4_1_0%] min-w-12 px-1 py-1 text-sm text-center focus:outline-none';
 
         const wDecrement = document.createElement('button');
         wDecrement.type = 'button';
@@ -1280,7 +1280,7 @@
         wIncrement.textContent = '+';
 
         const wStepper = document.createElement('div');
-        wStepper.className = 'flex-[3_1_0%] flex border border-gray-300 rounded shadow-sm overflow-hidden bg-white';
+        wStepper.className = 'flex-[2_1_0%] flex border border-gray-300 rounded shadow-sm overflow-hidden bg-white';
         wStepper.append(wDecrement, wInput, wIncrement);
 
         const editNoteInput = document.createElement('textarea');
