@@ -1259,28 +1259,28 @@
         const dtInput = document.createElement('input');
         dtInput.type = 'datetime-local';
         dtInput.value = toLocalInputValue(new Date(r.datetime));
-        dtInput.className = 'flex-1 min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
+        dtInput.className = 'flex-[8_1_0%] min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
 
         const wInput = document.createElement('input');
         wInput.type = 'number';
         wInput.step = '0.1';
         wInput.value = String(r.weight);
-        wInput.className = 'flex-1 min-w-0 px-1 py-1 text-sm text-center focus:outline-none';
+        wInput.className = 'flex-[4_1_0%] min-w-0 px-1 py-1 text-sm text-center focus:outline-none';
 
         const wDecrement = document.createElement('button');
         wDecrement.type = 'button';
         wDecrement.title = 'Snížit';
-        wDecrement.className = 'px-1 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-r border-gray-300';
+        wDecrement.className = 'flex-[3_1_0%] px-1 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-r border-gray-300';
         wDecrement.textContent = '−';
 
         const wIncrement = document.createElement('button');
         wIncrement.type = 'button';
         wIncrement.title = 'Zvýšit';
-        wIncrement.className = 'px-1 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-l border-gray-300';
+        wIncrement.className = 'flex-[3_1_0%] px-1 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-l border-gray-300';
         wIncrement.textContent = '+';
 
         const wStepper = document.createElement('div');
-        wStepper.className = 'w-24 flex border border-gray-300 rounded shadow-sm overflow-hidden bg-white';
+        wStepper.className = 'flex-[3_1_0%] flex border border-gray-300 rounded shadow-sm overflow-hidden bg-white';
         wStepper.append(wDecrement, wInput, wIncrement);
 
         const editNoteInput = document.createElement('textarea');
@@ -1322,7 +1322,6 @@
           actions = document.createElement('div');
           actions.className = 'flex gap-1 shrink-0 -my-1.5 -mr-2';
           actions.append(saveBtn, cancelBtn);
-          setTimeout(() => wInput.focus(), 0);
         }
 
         const topRow = document.createElement('div');
