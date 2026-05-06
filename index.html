@@ -987,10 +987,22 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    function setMenuActionsBusy(busy) {
+      exportBtn.disabled = busy;
+      importBtn.disabled = busy;
+      importHelpBtn.disabled = busy;
+      privacyMenuBtn.disabled = busy;
+      logoutBtn.disabled = busy;
+      wipeBtn.disabled = busy;
+    }
+
     exportBtn.addEventListener('click', async () => {
-      menuOverlay.classList.add('hidden');
-      const restoreSection = currentSection;
-      showLoading('Připravuji export...');
+      // Keep the menu open and surface progress inline on the export
+      // button itself; other menu actions are disabled while the
+      // export is running so a half-finished click can't fire.
+      const originalText = exportBtn.textContent;
+      exportBtn.textContent = 'Exportuji...';
+      setMenuActionsBusy(true);
       try {
         let raw;
         if (fileId) {
@@ -1009,12 +1021,13 @@
           // No file yet — export the local empty envelope.
           raw = JSON.stringify({ version: SCHEMA_VERSION, records: [], settings: {} }, null, 2);
         }
-        showSection(restoreSection);
         downloadJsonText(raw);
       } catch (err) {
         console.error('Error exporting', err);
-        showSection(restoreSection);
         alert('Chyba při exportu: ' + describeDriveError(err));
+      } finally {
+        exportBtn.textContent = originalText;
+        setMenuActionsBusy(false);
       }
     });
 
