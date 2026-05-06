@@ -676,16 +676,17 @@
         revisionId = null;
         records = [];
         settings = {};
-        return { exists: false, migrated: false };
+        return { exists: false, migrated: false, raw: '' };
       }
       fileId = file.id;
       revisionId = file.headRevisionId || null;
       const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
-      const parsed = JSON.parse(download.body || 'null');
+      const raw = download.body || '';
+      const parsed = JSON.parse(raw || 'null');
       const result = migrate(parsed);
       records = result.records;
       settings = result.settings;
-      return { exists: true, migrated: result.migrated };
+      return { exists: true, migrated: result.migrated, raw };
     }
 
     // Refetch content for an already-known fileId. Skips the list query
@@ -972,10 +973,8 @@
       wipeAllData();
     });
 
-    exportBtn.addEventListener('click', () => {
-      menuOverlay.classList.add('hidden');
-      const payload = JSON.stringify({ version: SCHEMA_VERSION, records, settings }, null, 2);
-      const blob = new Blob([payload], { type: 'application/json' });
+    function downloadJsonText(text) {
+      const blob = new Blob([text], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const td = new Date();
       const stamp = `${td.getFullYear()}-${String(td.getMonth() + 1).padStart(2, '0')}-${String(td.getDate()).padStart(2, '0')}`;
@@ -986,6 +985,37 @@
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    exportBtn.addEventListener('click', async () => {
+      menuOverlay.classList.add('hidden');
+      const restoreSection = currentSection;
+      showLoading('Připravuji export...');
+      try {
+        let raw;
+        if (fileId) {
+          // Pull the live file so the export reflects the current Drive
+          // state, not just whatever this tab last saw.
+          const oldRev = revisionId;
+          const result = await fetchFromDrive();
+          raw = result.raw;
+          // Only refresh the UI if the file actually changed on Drive —
+          // a same-revision refetch is a no-op for the user.
+          if (revisionId !== oldRev) {
+            renderRecords();
+            renderChart();
+          }
+        } else {
+          // No file yet — export the local empty envelope.
+          raw = JSON.stringify({ version: SCHEMA_VERSION, records: [], settings: {} }, null, 2);
+        }
+        showSection(restoreSection);
+        downloadJsonText(raw);
+      } catch (err) {
+        console.error('Error exporting', err);
+        showSection(restoreSection);
+        alert('Chyba při exportu: ' + describeDriveError(err));
+      }
     });
 
     importBtn.addEventListener('click', () => importInput.click());
