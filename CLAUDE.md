@@ -17,13 +17,23 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
 
 ## File layout
 
-- `index.html` — the entire app (markup + Tailwind CDN + inline JS).
-- `privacy.html` — standalone privacy policy page served at the
-  same origin. Referenced from Google's OAuth consent screen and
-  fetched lazily into an in-app modal so the SPA isn't navigated
-  away. The content block is marked with `id="privacy-content"`
-  for the loader to extract; everything else (Tailwind shell,
-  back link) is page-only chrome.
+- `public/` — everything that ships to the static host. Whatever
+  lands in this directory is what Cloudflare Pages serves; drop
+  a new file here and the next deploy picks it up automatically.
+  - `public/index.html` — the entire app (markup + Tailwind CDN
+    + inline JS).
+  - `public/privacy.html` — standalone privacy policy page
+    served at the same origin. Referenced from Google's OAuth
+    consent screen and fetched lazily into an in-app modal so
+    the SPA isn't navigated away. The content block is marked
+    with `id="privacy-content"` for the loader to extract;
+    everything else (Tailwind shell, back link) is page-only
+    chrome.
+- `.github/workflows/deploy-cloudflare-pages.yml` — GitHub
+  Actions workflow that runs `wrangler pages deploy public` on
+  every push to `main`. Requires repo secrets
+  `CLOUDFLARE_API_TOKEN` (with Pages › Edit) and
+  `CLOUDFLARE_ACCOUNT_ID`.
 - `CLAUDE.md` — this file.
 
 ## Tech / dependencies (all CDN, no install)
