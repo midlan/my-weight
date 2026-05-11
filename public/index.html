@@ -53,7 +53,7 @@
       </button>
       <p class="text-xs text-gray-500 mt-3">
         Přihlášením souhlasíte se
-        <a href="privacy.html" id="privacy-login-link" class="underline hover:text-gray-700">zásadami ochrany osobních údajů</a>.
+        <a href="privacy" id="privacy-login-link" class="underline hover:text-gray-700">zásadami ochrany osobních údajů</a>.
       </p>
     </div>
     <div id="app-section" style="display: none;">
@@ -268,7 +268,7 @@
       if (privacyContentPromise) return privacyContentPromise;
       privacyContentPromise = (async () => {
         try {
-          const res = await fetch('privacy.html');
+          const res = await fetch('privacy');
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const html = await res.text();
           const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -278,7 +278,7 @@
           privacyContentLoaded = true;
         } catch (err) {
           console.warn('Failed to load privacy content', err);
-          privacyContentEl.innerHTML = 'Nepodařilo se načíst zásady. Otevřete <a class="underline text-blue-600" href="privacy.html">privacy.html</a>.';
+          privacyContentEl.innerHTML = 'Nepodařilo se načíst zásady. Otevřete <a class="underline text-blue-600" href="privacy">/privacy</a>.';
         } finally {
           privacyContentPromise = null;
         }
