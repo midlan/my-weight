@@ -14,6 +14,9 @@
 
   <!-- Tailwind CSS via Browser CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
+  <style type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </style>
   <style>
     button:not(:disabled) { cursor: pointer; }
     input[type=number]::-webkit-inner-spin-button,
@@ -23,26 +26,38 @@
     }
     input[type=number] { -moz-appearance: textfield; }
   </style>
+  <script>
+    // Apply system dark preference synchronously, before anything renders,
+    // so the first paint matches the user's OS theme. Once the saved
+    // settings.theme loads from Drive, applyTheme() may override this.
+    (function () {
+      try {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
   <!-- Chart.js + date adapter -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
-<body class="bg-gray-100 min-h-screen sm:flex sm:items-center sm:justify-center">
-  <div class="bg-white p-6 w-full min-h-screen sm:max-w-2xl sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg relative">
+<body class="bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen sm:flex sm:items-center sm:justify-center">
+  <div class="bg-white dark:bg-gray-900 p-6 w-full min-h-screen sm:max-w-2xl sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg relative">
     <header class="flex items-center justify-between mb-4">
       <h1 class="text-2xl font-bold">Moje váha</h1>
-      <button id="menu-btn" class="hidden p-1 rounded text-gray-700 hover:bg-gray-100" title="Menu">
+      <button id="menu-btn" class="hidden p-1 rounded text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800" title="Menu">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/>
         </svg>
       </button>
     </header>
     <div id="loading-section" class="text-center min-h-36 flex flex-col items-center justify-center">
-      <div class="inline-block w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin" role="status" aria-label="Načítám"></div>
-      <p id="loading-message" class="text-sm text-gray-500 mt-2">Načítám...</p>
+      <div class="inline-block w-10 h-10 border-4 border-gray-200 dark:border-gray-700 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin" role="status" aria-label="Načítám"></div>
+      <p id="loading-message" class="text-sm text-gray-500 dark:text-gray-400 mt-2">Načítám...</p>
     </div>
     <div id="auth-section" class="text-center min-h-36 flex flex-col items-center justify-center" style="display: none;">
-      <button id="login-btn" class="inline-flex items-center gap-3 px-4 py-2 bg-white text-gray-700 font-medium border border-gray-300 rounded shadow-sm hover:bg-gray-50 transition">
+      <button id="login-btn" class="inline-flex items-center gap-3 px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-100 font-medium border border-gray-300 dark:border-gray-700 rounded shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" class="w-5 h-5" aria-hidden="true">
           <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/>
           <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/>
@@ -51,68 +66,68 @@
         </svg>
         <span>Přihlásit přes Google</span>
       </button>
-      <p class="text-xs text-gray-500 mt-3">
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
         Přihlášením souhlasíte se
-        <a href="privacy" id="privacy-login-link" class="underline hover:text-gray-700">zásadami ochrany osobních údajů</a>.
+        <a href="privacy" id="privacy-login-link" class="underline hover:text-gray-700 dark:hover:text-gray-200">zásadami ochrany osobních údajů</a>.
       </p>
     </div>
     <div id="app-section" style="display: none;">
       <div class="flex flex-wrap gap-1 mb-2">
-        <button type="button" data-range="7d" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">7 dní</button>
-        <button type="button" data-range="30d" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">30 dní</button>
-        <button type="button" data-range="3m" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">3 měsíce</button>
-        <button type="button" data-range="6m" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">6 měsíců</button>
-        <button type="button" data-range="1y" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">1 rok</button>
-        <button type="button" data-range="all" class="range-btn px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Vše</button>
+        <button type="button" data-range="7d" class="range-btn px-2 py-1 text-sm bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-700">7 dní</button>
+        <button type="button" data-range="30d" class="range-btn px-2 py-1 text-sm bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-700">30 dní</button>
+        <button type="button" data-range="3m" class="range-btn px-2 py-1 text-sm bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-700">3 měsíce</button>
+        <button type="button" data-range="6m" class="range-btn px-2 py-1 text-sm bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-700">6 měsíců</button>
+        <button type="button" data-range="1y" class="range-btn px-2 py-1 text-sm bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-700">1 rok</button>
+        <button type="button" data-range="all" class="range-btn px-2 py-1 text-sm bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-700">Vše</button>
       </div>
       <div class="flex flex-wrap gap-3 text-sm mb-2">
         <label class="flex items-center gap-1">
           <span>Od:</span>
-          <input type="date" id="range-from" class="border-gray-300 rounded" />
+          <input type="date" id="range-from" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded px-1" />
         </label>
         <label class="flex items-center gap-1">
           <span>Do:</span>
-          <input type="date" id="range-to" class="border-gray-300 rounded" />
+          <input type="date" id="range-to" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded px-1" />
         </label>
       </div>
       <div class="relative h-64">
         <canvas id="weight-chart"></canvas>
-        <p id="chart-empty" class="absolute inset-0 flex items-center justify-center text-gray-500 text-sm hidden">V rozsahu nejsou žádná data.</p>
+        <p id="chart-empty" class="absolute inset-0 flex items-center justify-center text-gray-500 dark:text-gray-400 text-sm hidden">V rozsahu nejsou žádná data.</p>
       </div>
-      <hr class="my-4" />
+      <hr class="my-4 border-gray-200 dark:border-gray-700" />
       <h2 class="text-xl font-semibold mb-2">Nový záznam</h2>
       <form id="weight-form" class="space-y-4">
         <div class="grid grid-cols-[minmax(0,57fr)_minmax(0,43fr)] gap-3">
           <div>
             <label for="datetime" class="block text-sm font-medium">Datum a čas</label>
-            <button type="button" id="now-btn" title="Klikněte pro nastavení vlastního data a času" class="mt-1 block w-full bg-white border border-gray-300 rounded px-2 py-2 text-xl shadow-sm text-left text-gray-700 hover:bg-gray-50">
+            <button type="button" id="now-btn" title="Klikněte pro nastavení vlastního data a času" class="mt-1 block w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-2 text-xl shadow-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
               teď
             </button>
-            <input type="datetime-local" id="datetime" class="mt-1 hidden w-full bg-white border border-gray-300 rounded px-2 py-2 text-xl shadow-sm" />
+            <input type="datetime-local" id="datetime" class="mt-1 hidden w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded px-2 py-2 text-xl shadow-sm" />
           </div>
           <div>
             <label for="weight" class="block text-sm font-medium">Hmotnost (kg)</label>
-            <div class="mt-1 flex border border-gray-300 rounded shadow-sm overflow-hidden bg-white">
-              <button type="button" id="weight-decrement" title="Snížit" class="px-3 bg-gray-100 hover:bg-gray-200 text-xl font-medium border-r border-gray-300">−</button>
-              <input type="number" step="0.1" id="weight" class="flex-1 min-w-0 w-full px-2 py-2 text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-200" />
-              <button type="button" id="weight-increment" title="Zvýšit" class="px-3 bg-gray-100 hover:bg-gray-200 text-xl font-medium border-l border-gray-300">+</button>
+            <div class="mt-1 flex border border-gray-300 dark:border-gray-700 rounded shadow-sm overflow-hidden bg-white dark:bg-gray-800">
+              <button type="button" id="weight-decrement" title="Snížit" class="px-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-xl font-medium border-r border-gray-300 dark:border-gray-700">−</button>
+              <input type="number" step="0.1" id="weight" class="flex-1 min-w-0 w-full bg-transparent text-gray-900 dark:text-gray-100 px-2 py-2 text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900" />
+              <button type="button" id="weight-increment" title="Zvýšit" class="px-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-xl font-medium border-l border-gray-300 dark:border-gray-700">+</button>
             </div>
           </div>
         </div>
         <div>
           <label for="note" class="block text-sm font-medium">Poznámka</label>
-          <textarea id="note" rows="1" class="mt-1 block w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm resize-none"></textarea>
+          <textarea id="note" rows="1" class="mt-1 block w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded px-2 py-1 text-sm shadow-sm resize-none"></textarea>
         </div>
         <button type="submit" class="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
           Uložit
         </button>
       </form>
-      <hr class="my-4" />
+      <hr class="my-4 border-gray-200 dark:border-gray-700" />
       <h2 class="text-xl font-semibold mb-2">Historie</h2>
       <div id="pagination" class="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm hidden">
-        <label class="flex items-center gap-1 text-gray-600">
+        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
           <span>Na stránku:</span>
-          <select id="page-size" class="border-gray-300 rounded">
+          <select id="page-size" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded">
             <option value="10" selected>10</option>
             <option value="25">25</option>
             <option value="50">50</option>
@@ -122,13 +137,13 @@
           </select>
         </label>
         <div class="flex items-center gap-2">
-          <button id="prev-page" type="button" title="Předchozí" aria-label="Předchozí" class="p-1 bg-gray-200 rounded disabled:opacity-50 inline-flex items-center justify-center">
+          <button id="prev-page" type="button" title="Předchozí" aria-label="Předchozí" class="p-1 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded disabled:opacity-50 inline-flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
               <path d="M15 18l-6-6 6-6"/>
             </svg>
           </button>
-          <span id="page-info" class="text-gray-600"></span>
-          <button id="next-page" type="button" title="Další" aria-label="Další" class="p-1 bg-gray-200 rounded disabled:opacity-50 inline-flex items-center justify-center">
+          <span id="page-info" class="text-gray-600 dark:text-gray-300"></span>
+          <button id="next-page" type="button" title="Další" aria-label="Další" class="p-1 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded disabled:opacity-50 inline-flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
               <path d="M9 18l6-6-6-6"/>
             </svg>
@@ -137,24 +152,33 @@
       </div>
       <ul id="history-list" class="space-y-2"></ul>
     </div>
-    <div id="menu-overlay" class="hidden absolute inset-0 bg-white p-6 sm:rounded-lg overflow-auto">
+    <div id="menu-overlay" class="hidden absolute inset-0 bg-white dark:bg-gray-900 p-6 sm:rounded-lg overflow-auto">
       <header class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-semibold">Menu</h2>
-        <button id="menu-close-btn" class="p-1 rounded text-gray-700 hover:bg-gray-100" title="Zavřít">
+        <button id="menu-close-btn" class="p-1 rounded text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800" title="Zavřít">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
         </button>
       </header>
+      <div class="mb-4">
+        <p class="text-sm font-medium mb-2">Vzhled</p>
+        <div class="flex border border-gray-300 dark:border-gray-700 rounded shadow-sm overflow-hidden">
+          <button data-theme="system" class="theme-btn flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition">Systém</button>
+          <button data-theme="light" class="theme-btn flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition border-l border-gray-300 dark:border-gray-700">Světlý</button>
+          <button data-theme="dark" class="theme-btn flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition border-l border-gray-300 dark:border-gray-700">Tmavý</button>
+        </div>
+      </div>
+      <hr class="my-4 border-gray-200 dark:border-gray-700" />
       <div class="space-y-2">
-        <button id="export-btn" class="w-full px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 transition">
+        <button id="export-btn" class="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition">
           Exportovat data
         </button>
-        <div class="relative bg-gray-100 border border-gray-300 rounded shadow-sm overflow-hidden">
-          <button id="import-btn" class="block w-full px-4 py-2 text-gray-700 hover:bg-gray-200 transition">
+        <div class="relative bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded shadow-sm overflow-hidden">
+          <button id="import-btn" class="block w-full px-4 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
             Importovat data
           </button>
-          <button id="import-help-btn" title="Nápověda k importu z kaloricketabulky.cz" class="absolute right-0 top-0 bottom-0 px-3 text-gray-700 hover:bg-gray-200 border-l border-gray-300 transition">
+          <button id="import-help-btn" title="Nápověda k importu z kaloricketabulky.cz" class="absolute right-0 top-0 bottom-0 px-3 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 border-l border-gray-300 dark:border-gray-700 transition">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
               <circle cx="12" cy="12" r="10"/>
               <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
@@ -164,29 +188,29 @@
         </div>
         <input type="file" id="import-input" accept="application/json,.json" class="hidden" />
       </div>
-      <hr class="my-4" />
-      <button id="privacy-menu-btn" class="w-full px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200 transition">
+      <hr class="my-4 border-gray-200 dark:border-gray-700" />
+      <button id="privacy-menu-btn" class="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition">
         Zásady ochrany osobních údajů
       </button>
-      <hr class="my-4" />
+      <hr class="my-4 border-gray-200 dark:border-gray-700" />
       <button id="logout-btn" class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
         Odhlásit se
       </button>
-      <button id="wipe-btn" class="mt-2 w-full px-4 py-2 bg-red-100 text-red-700 border border-red-300 rounded hover:bg-red-200 transition">
+      <button id="wipe-btn" class="mt-2 w-full px-4 py-2 bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-800 rounded hover:bg-red-200 dark:hover:bg-red-900 transition">
         Smazat všechna data
       </button>
     </div>
-    <div id="privacy-overlay" class="hidden fixed inset-0 z-50 bg-gray-100 overflow-auto">
-      <div class="bg-white p-6 w-full min-h-screen sm:max-w-2xl sm:mx-auto sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg">
+    <div id="privacy-overlay" class="hidden fixed inset-0 z-50 bg-gray-100 dark:bg-gray-950 overflow-auto">
+      <div class="bg-white dark:bg-gray-900 p-6 w-full min-h-screen sm:max-w-2xl sm:mx-auto sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg">
         <header class="flex items-center justify-between mb-4">
           <h2 class="text-xl font-semibold">Zásady ochrany osobních údajů</h2>
-          <button id="privacy-close-btn" class="p-1 rounded text-gray-700 hover:bg-gray-100" title="Zavřít">
+          <button id="privacy-close-btn" class="p-1 rounded text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800" title="Zavřít">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-6 h-6">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
         </header>
-        <div id="privacy-modal-content" class="space-y-3 text-gray-700 text-sm leading-relaxed"></div>
+        <div id="privacy-modal-content" class="space-y-3 text-gray-700 dark:text-gray-300 text-sm leading-relaxed"></div>
       </div>
     </div>
   </div>
@@ -220,6 +244,11 @@
         settingsSaveTimer = null;
         const apply = () => {
           settings.rangePreset = currentPreset;
+          if (currentTheme === 'system') {
+            delete settings.theme;
+          } else {
+            settings.theme = currentTheme;
+          }
           return true;
         };
         uploadWithConflictRetry(apply).then(({ refetched }) => {
@@ -349,10 +378,54 @@
 
     const ALLOWED_PAGE_SIZES = [10, 25, 50, 100, 250, 500];
     const ALLOWED_PRESETS = ['7d', '30d', '3m', '6m', '1y', 'all'];
+    const ALLOWED_THEMES = ['system', 'light', 'dark'];
 
     function effectivePreset() {
       const stored = settings.rangePreset;
       return ALLOWED_PRESETS.includes(stored) ? stored : '7d';
+    }
+
+    function effectiveTheme() {
+      const stored = settings.theme;
+      return ALLOWED_THEMES.includes(stored) ? stored : 'system';
+    }
+
+    const darkMql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    let darkMqlListener = null;
+
+    function applyTheme(theme) {
+      const isDark = theme === 'dark' || (theme === 'system' && darkMql && darkMql.matches);
+      document.documentElement.classList.toggle('dark', isDark);
+      // System mode follows OS changes live; explicit choices ignore them.
+      if (theme === 'system' && darkMql && !darkMqlListener) {
+        darkMqlListener = (e) => document.documentElement.classList.toggle('dark', e.matches);
+        darkMql.addEventListener('change', darkMqlListener);
+      } else if (theme !== 'system' && darkMql && darkMqlListener) {
+        darkMql.removeEventListener('change', darkMqlListener);
+        darkMqlListener = null;
+      }
+      updateThemeButtons();
+      // Chart text colors depend on theme; if a chart exists, force a redraw.
+      if (chart) renderChart();
+    }
+
+    function updateThemeButtons() {
+      const cur = effectiveTheme();
+      document.querySelectorAll('.theme-btn').forEach(btn => {
+        const active = btn.dataset.theme === cur;
+        btn.classList.toggle('bg-blue-600', active);
+        btn.classList.toggle('dark:bg-blue-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('dark:text-white', active);
+        btn.classList.toggle('hover:bg-blue-700', active);
+        btn.classList.toggle('dark:hover:bg-blue-700', active);
+        btn.classList.toggle('bg-gray-100', !active);
+        btn.classList.toggle('dark:bg-gray-800', !active);
+        btn.classList.toggle('text-gray-700', !active);
+        btn.classList.toggle('dark:text-gray-200', !active);
+        btn.classList.toggle('hover:bg-gray-200', !active);
+        btn.classList.toggle('dark:hover:bg-gray-700', !active);
+      });
     }
     let pageSize = 10;
     pageSizeSelect.value = String(pageSize);
@@ -373,6 +446,7 @@
     let silentAttempt = false;
     let silentTimeoutId = null;
     let currentPreset = '7d';
+    let currentTheme = 'system';
 
     function clearSilentState() {
       if (silentTimeoutId) {
@@ -489,10 +563,17 @@
       document.querySelectorAll('.range-btn').forEach(btn => {
         const active = btn.dataset.range === currentPreset;
         btn.classList.toggle('bg-blue-600', active);
+        btn.classList.toggle('dark:bg-blue-600', active);
         btn.classList.toggle('text-white', active);
+        btn.classList.toggle('dark:text-white', active);
         btn.classList.toggle('hover:bg-blue-700', active);
+        btn.classList.toggle('dark:hover:bg-blue-700', active);
         btn.classList.toggle('bg-gray-200', !active);
+        btn.classList.toggle('dark:bg-gray-800', !active);
+        btn.classList.toggle('text-gray-700', !active);
+        btn.classList.toggle('dark:text-gray-200', !active);
         btn.classList.toggle('hover:bg-gray-300', !active);
+        btn.classList.toggle('dark:hover:bg-gray-700', !active);
       });
     }
 
@@ -607,6 +688,8 @@
       }
       chartEmptyEl.classList.add('hidden');
       applyRangePreset(effectivePreset());
+      currentTheme = effectiveTheme();
+      applyTheme(currentTheme);
     });
 
     async function onSignIn() {
@@ -877,6 +960,8 @@
           try { await uploadRecords(); } catch (e) { console.warn('Rewrite-on-load failed', e); }
         }
         applyRangePreset(effectivePreset());
+        currentTheme = effectiveTheme();
+        applyTheme(currentTheme);
         renderRecords();
         renderChart();
         prefillWeightInput();
@@ -898,6 +983,8 @@
           recordsLoaded = true;
         }
         applyRangePreset(effectivePreset());
+        currentTheme = effectiveTheme();
+        applyTheme(currentTheme);
         renderRecords();
         renderChart();
         prefillWeightInput();
@@ -1262,7 +1349,7 @@
       historyList.innerHTML = '';
       if (records.length === 0) {
         const li = document.createElement('li');
-        li.className = 'p-2 text-gray-500';
+        li.className = 'p-2 text-gray-500 dark:text-gray-400';
         li.textContent = 'Žádné záznamy k zobrazení.';
         historyList.appendChild(li);
         paginationEl.classList.add('hidden');
@@ -1305,40 +1392,40 @@
       li.dataset.idx = String(idx);
 
       if (idx === editingIndex) {
-        li.className = 'p-2 bg-gray-50 rounded flex flex-col gap-2';
+        li.className = 'p-2 bg-gray-50 dark:bg-gray-800 rounded flex flex-col gap-2';
 
         const dtInput = document.createElement('input');
         dtInput.type = 'datetime-local';
         dtInput.value = toLocalInputValue(new Date(r.datetime));
-        dtInput.className = 'flex-[3_1_0%] min-w-0 bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm';
+        dtInput.className = 'flex-[3_1_0%] min-w-0 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded px-2 py-1 text-sm shadow-sm';
 
         const wInput = document.createElement('input');
         wInput.type = 'number';
         wInput.step = '0.1';
         wInput.value = String(r.weight);
-        wInput.className = 'flex-[4_1_0%] min-w-12 px-1 py-1 text-sm text-center focus:outline-none';
+        wInput.className = 'flex-[4_1_0%] min-w-12 px-1 py-1 text-sm text-center focus:outline-none bg-transparent text-gray-900 dark:text-gray-100';
 
         const wDecrement = document.createElement('button');
         wDecrement.type = 'button';
         wDecrement.title = 'Snížit';
-        wDecrement.className = 'flex-[3_1_0%] px-1 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-r border-gray-300';
+        wDecrement.className = 'flex-[3_1_0%] px-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-sm font-medium border-r border-gray-300 dark:border-gray-700';
         wDecrement.textContent = '−';
 
         const wIncrement = document.createElement('button');
         wIncrement.type = 'button';
         wIncrement.title = 'Zvýšit';
-        wIncrement.className = 'flex-[3_1_0%] px-1 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-l border-gray-300';
+        wIncrement.className = 'flex-[3_1_0%] px-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-sm font-medium border-l border-gray-300 dark:border-gray-700';
         wIncrement.textContent = '+';
 
         const wStepper = document.createElement('div');
-        wStepper.className = 'flex-[2_1_0%] flex border border-gray-300 rounded shadow-sm overflow-hidden bg-white';
+        wStepper.className = 'flex-[2_1_0%] flex border border-gray-300 dark:border-gray-700 rounded shadow-sm overflow-hidden bg-white dark:bg-gray-900';
         wStepper.append(wDecrement, wInput, wIncrement);
 
         const editNoteInput = document.createElement('textarea');
         editNoteInput.rows = 2;
         editNoteInput.value = r.note || '';
         editNoteInput.placeholder = 'Poznámka';
-        editNoteInput.className = 'w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm shadow-sm resize-none';
+        editNoteInput.className = 'w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 rounded px-2 py-1 text-sm shadow-sm resize-none';
 
         let actions;
         if (isSavingEdit) {
@@ -1348,13 +1435,13 @@
           wDecrement.disabled = true;
           wIncrement.disabled = true;
           actions = document.createElement('span');
-          actions.className = 'text-sm text-gray-500 px-2 shrink-0 whitespace-nowrap';
+          actions.className = 'text-sm text-gray-500 dark:text-gray-400 px-2 shrink-0 whitespace-nowrap';
           actions.textContent = 'Ukládám...';
         } else {
-          const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 hover:bg-green-50');
+          const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950');
           saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value, editNoteInput.value));
 
-          const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 hover:bg-gray-200');
+          const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700');
           cancelBtn.addEventListener('click', () => { editingIndex = -1; editingDatetimeMin = ''; renderRecords(); });
 
           wDecrement.addEventListener('click', () => adjustWeight(wInput, -0.1));
@@ -1393,7 +1480,7 @@
         actions.className = 'flex gap-1 shrink-0 -my-1.5 -mr-2';
 
         if (idx === deletingIndex) {
-          const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500');
+          const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 dark:text-gray-300');
           editBtn.disabled = true;
           editBtn.classList.add('opacity-50');
 
@@ -1402,11 +1489,11 @@
           spinnerBtn.disabled = true;
           spinnerBtn.title = 'Mažu...';
           spinnerBtn.className = 'p-2 rounded text-red-600';
-          spinnerBtn.innerHTML = '<div class="w-5 h-5 border-2 border-gray-300 border-t-red-600 rounded-full animate-spin"></div>';
+          spinnerBtn.innerHTML = '<div class="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-red-600 dark:border-t-red-400 rounded-full animate-spin"></div>';
 
           actions.append(editBtn, spinnerBtn);
         } else if (deletingIndex === -1) {
-          const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 hover:bg-blue-50 hover:text-blue-600');
+          const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950 hover:text-blue-600 dark:hover:text-blue-300');
           editBtn.addEventListener('click', () => {
             if (editingIndex !== -1 && editingIndex !== idx) {
               if (editingRowHasChanges()) {
@@ -1424,14 +1511,14 @@
             renderRecords();
           });
 
-          const delBtn = iconButton(ICON_TRASH, 'Smazat', 'text-gray-500 hover:bg-red-50 hover:text-red-600');
+          const delBtn = iconButton(ICON_TRASH, 'Smazat', 'text-gray-500 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-300');
           delBtn.addEventListener('click', () => deleteRecord(idx));
 
           actions.append(editBtn, delBtn);
         }
 
         const noteSpan = document.createElement('span');
-        noteSpan.className = 'text-sm text-gray-600';
+        noteSpan.className = 'text-sm text-gray-600 dark:text-gray-300';
         if (r.note) {
           noteSpan.textContent = r.note;
           noteSpan.title = r.note;
@@ -1445,7 +1532,7 @@
         };
 
         if (isExpanded) {
-          li.className = 'p-2 bg-gray-50 rounded flex flex-col gap-2';
+          li.className = 'p-2 bg-gray-50 dark:bg-gray-800 rounded flex flex-col gap-2';
           dateSpan.className = 'flex-1';
           noteSpan.classList.add('whitespace-pre-wrap');
 
@@ -1465,7 +1552,7 @@
 
           li.append(topRow, noteSpan);
         } else {
-          li.className = 'p-2 bg-gray-50 rounded flex items-center gap-2';
+          li.className = 'p-2 bg-gray-50 dark:bg-gray-800 rounded flex items-center gap-2';
           dateSpan.className = 'shrink-0';
           noteSpan.classList.add('flex-1', 'min-w-0', 'truncate');
 
@@ -1631,6 +1718,28 @@
       renderChart();
     });
 
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const theme = btn.dataset.theme;
+        if (!ALLOWED_THEMES.includes(theme)) return;
+        currentTheme = theme;
+        // Store 'light' / 'dark' explicitly; 'system' is the default — drop
+        // the key so the file stays minimal and a later device with a
+        // different system preference doesn't inherit a stale override.
+        if (theme === 'system') {
+          delete settings.theme;
+        } else {
+          settings.theme = theme;
+        }
+        applyTheme(theme);
+        scheduleSettingsSave();
+      });
+    });
+
+    // Apply the initial theme so the toggle highlights match the system
+    // preference before any settings have loaded.
+    applyTheme(effectiveTheme());
+
     function renderChart() {
       if (typeof Chart === 'undefined') return;
       const fromVal = rangeFromInput.value;
@@ -1681,10 +1790,19 @@
         }]
       };
 
+      const isDark = document.documentElement.classList.contains('dark');
+      const textColor = isDark ? '#e5e7eb' : '#1f2937';
+      const gridColor = isDark ? '#374151' : '#e5e7eb';
+
       if (chart) {
         chart.data = data;
         chart.options.scales.x.min = isFinite(fromTs) ? fromTs : undefined;
         chart.options.scales.x.max = isFinite(toTs) ? toTs : undefined;
+        chart.options.scales.x.ticks.color = textColor;
+        chart.options.scales.x.grid.color = gridColor;
+        chart.options.scales.y.ticks.color = textColor;
+        chart.options.scales.y.grid.color = gridColor;
+        chart.options.scales.y.title.color = textColor;
         chart.update();
         return;
       }
@@ -1722,6 +1840,7 @@
               min: isFinite(fromTs) ? fromTs : undefined,
               max: isFinite(toTs) ? toTs : undefined,
               ticks: {
+                color: textColor,
                 callback: function (value) {
                   const d = new Date(value);
                   const unit = this._unit;
@@ -1733,9 +1852,14 @@
                   else opts = { day: 'numeric', month: 'short' };
                   return new Intl.DateTimeFormat(undefined, opts).format(d);
                 }
-              }
+              },
+              grid: { color: gridColor }
             },
-            y: { title: { display: true, text: 'kg' } }
+            y: {
+              title: { display: true, text: 'kg', color: textColor },
+              ticks: { color: textColor },
+              grid: { color: gridColor }
+            }
           }
         }
       });

@@ -118,6 +118,10 @@ This is the part most likely to bite a future change, so read carefully.
   forward-compatible change; readers ignore unknown keys, missing
   settings fall back to defaults. Currently:
   - `rangePreset` — one of `7d`, `30d`, `3m`, `6m`, `1y`, `all`.
+  - `theme` — `light` or `dark`. Absent (system mode) when the
+    user lets the OS preference decide; explicitly stored only
+    when the user picks one in the menu so a fresh device with a
+    different system preference doesn't inherit a stale override.
   Saves are debounced (500 ms) on the device that changed the value
   and ride along with the regular records upload.
 - Datetime is the unique key (matched at minute precision); a record's
@@ -182,11 +186,25 @@ if migration somehow lets one slip through.
   doesn't override hide. Both loading and auth sections share
   `min-h-36` so the card stays the same height across the
   loading→auth handover; eliminates a card-resize blink.
-- **Hamburger menu** (`#menu-overlay`) covers logout, wipe, import,
-  export, and a link to the privacy policy. The menu button itself
-  is only revealed when `showSection('app')` runs. Logout / wipe
-  close the menu first so the underlying section transition is
-  visible.
+- **Hamburger menu** (`#menu-overlay`) covers theme selection
+  (system / světlý / tmavý), import / export, the privacy policy
+  link, logout, and wipe. The menu button itself is only revealed
+  when `showSection('app')` runs. Logout / wipe close the menu
+  first so the underlying section transition is visible.
+- **Dark mode**: a `<style type="text/tailwindcss">` block declares
+  `@custom-variant dark (&:where(.dark, .dark *))`, so the `dark:`
+  Tailwind variant fires when `<html>` carries the `dark` class
+  (not on the default `prefers-color-scheme` media query). A small
+  inline script in `<head>` sets the class synchronously from the
+  OS preference before first paint to avoid a flash; `applyTheme()`
+  in the main script overrides this once `settings.theme` is
+  loaded. The menu's theme selector writes the chosen value to
+  `settings.theme` (or removes the key when the user picks
+  "Systém") and `scheduleSettingsSave()` syncs both `rangePreset`
+  and `theme` to Drive in one upload. The chart's tick / grid /
+  title colors are set programmatically per theme (Chart.js draws
+  on canvas — `dark:` classes don't reach it). `applyTheme()`
+  triggers a chart re-render so the canvas restyles immediately.
 - **Privacy modal** (`#privacy-overlay`) is a separate fixed-position
   overlay (z-50, body-scroll-locked while open) that lazy-loads the
   `privacy-content` element from `privacy.html` via `fetch()` on
