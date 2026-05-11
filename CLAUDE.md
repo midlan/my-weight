@@ -279,8 +279,20 @@ if migration somehow lets one slip through.
 
 ## Branch convention
 
-`main` is the deploy target — GitHub Pages serves it directly. Most
-edits land on `main` directly (the project is single-author and the
-deploy pipeline is fast). Use feature branches + PRs for larger
-shape-changing work or when collaborating; otherwise commit and
-push straight to `main`.
+Two long-lived branches the deploy workflow watches:
+
+- `main` → production. Cloudflare Pages serves it at
+  `www.mojevaha.cz` and at `my-weight.pages.dev`.
+- `dev` → staging. Cloudflare Pages serves it at
+  `dev.mojevaha.cz` (custom domain attached to this branch
+  alias in the Pages dashboard).
+
+Any other branch can also be deployed manually via the workflow's
+`workflow_dispatch` trigger — Cloudflare creates a per-branch URL
+of the form `<branch>.my-weight.pages.dev` for ad-hoc tests.
+
+For small, low-risk edits in this single-author project, commit
+straight to `main`. For anything that needs eyeballs before users
+see it, push to `dev` first, verify at `dev.mojevaha.cz`, then
+merge `dev` → `main`. Feature branches + PRs are optional and
+worthwhile for larger shape-changing work or when collaborating.
