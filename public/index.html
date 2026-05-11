@@ -445,6 +445,11 @@
     const expandedNotes = new WeakSet();
     let silentAttempt = false;
     let silentTimeoutId = null;
+    // Promise state for mid-session silent re-auth (after a 401). Distinct
+    // from the page-load silent flow (silentAttempt/silentTimeoutId) which
+    // resolves via onSignIn(); this one only refreshes the access token so
+    // the caller can retry their failed Drive op without reloading.
+    let pendingSilentReauth = null;
     let currentPreset = '7d';
     let currentTheme = 'system';
 
@@ -454,6 +459,59 @@
         silentTimeoutId = null;
       }
       silentAttempt = false;
+    }
+
+    function attemptSilentReauth() {
+      if (pendingSilentReauth) return pendingSilentReauth.promise;
+      if (!tokenClient) return Promise.reject(new Error('Token client not ready'));
+      const state = {};
+      state.promise = new Promise((resolve, reject) => {
+        state.resolve = resolve;
+        state.reject = reject;
+      });
+      state.timeoutId = setTimeout(() => {
+        if (pendingSilentReauth !== state) return;
+        pendingSilentReauth = null;
+        state.reject(new Error('Silent re-auth timed out'));
+      }, 8000);
+      pendingSilentReauth = state;
+      try {
+        tokenClient.requestAccessToken({ prompt: 'none' });
+      } catch (err) {
+        if (pendingSilentReauth === state) {
+          pendingSilentReauth = null;
+          clearTimeout(state.timeoutId);
+          state.reject(err);
+        }
+      }
+      return state.promise;
+    }
+
+    // Run a Drive op, retrying once after a silent re-auth on 401.
+    // If the silent re-auth itself fails, the original 401 is re-thrown
+    // and the caller's catch decides how to surface the auth loss.
+    async function withReauth(fn) {
+      try {
+        return await fn();
+      } catch (err) {
+        const status = err?.status || err?.result?.error?.code;
+        if (status !== 401) throw err;
+        try {
+          await attemptSilentReauth();
+        } catch (reauthErr) {
+          console.warn('Silent re-auth on 401 failed', reauthErr);
+          throw err;
+        }
+        return await fn();
+      }
+    }
+
+    function handleFatal401() {
+      clearStoredToken();
+      accessToken = null;
+      if (gapiReady) gapi.client.setToken(null);
+      showSection('auth');
+      alert('Přihlášení vypršelo, přihlaste se znovu.');
     }
     const initState = { gapi: false, gis: false };
 
@@ -608,6 +666,20 @@
         scope: SCOPE,
         ux_mode: 'popup',
         callback: (tokenResponse) => {
+          if (pendingSilentReauth) {
+            const state = pendingSilentReauth;
+            pendingSilentReauth = null;
+            clearTimeout(state.timeoutId);
+            if (tokenResponse.error) {
+              state.reject(new Error(tokenResponse.error));
+              return;
+            }
+            accessToken = tokenResponse.access_token;
+            storeToken(accessToken, parseInt(tokenResponse.expires_in, 10));
+            if (gapiReady) gapi.client.setToken({ access_token: accessToken });
+            state.resolve();
+            return;
+          }
           const wasSilent = silentAttempt;
           clearSilentState();
           if (tokenResponse.error) {
@@ -621,6 +693,13 @@
           onSignIn();
         },
         error_callback: (err) => {
+          if (pendingSilentReauth) {
+            const state = pendingSilentReauth;
+            pendingSilentReauth = null;
+            clearTimeout(state.timeoutId);
+            state.reject(err || new Error('Silent re-auth failed'));
+            return;
+          }
           console.warn('Token client error', err);
           clearSilentState();
           showSection('auth');
@@ -752,11 +831,11 @@
     });
 
     async function findAppDataFile() {
-      const res = await gapi.client.drive.files.list({
+      const res = await withReauth(() => gapi.client.drive.files.list({
         spaces: 'appDataFolder',
         fields: 'files(id,name,headRevisionId)',
         q: `name='${FILE_NAME}' and 'appDataFolder' in parents`
-      });
+      }));
       return res.result.files[0] || null;
     }
 
@@ -771,7 +850,7 @@
       }
       fileId = file.id;
       revisionId = file.headRevisionId || null;
-      const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+      const download = await withReauth(() => gapi.client.drive.files.get({ fileId, alt: 'media' }));
       const raw = download.body || '';
       const parsed = JSON.parse(raw || 'null');
       const result = migrate(parsed);
@@ -786,7 +865,7 @@
     // caller is responsible for setting revisionId — typically reusing
     // the value just observed by the pre-flight metadata GET.
     async function fetchContentByFileId() {
-      const download = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+      const download = await withReauth(() => gapi.client.drive.files.get({ fileId, alt: 'media' }));
       const parsed = JSON.parse(download.body || 'null');
       const result = migrate(parsed);
       records = result.records;
@@ -848,34 +927,42 @@
       const payload = JSON.stringify({ version: SCHEMA_VERSION, records, settings });
       if (fileId) {
         const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,headRevisionId`;
-        const headers = {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        };
-        const res = await fetch(updateUrl, { method: 'PATCH', headers, body: payload });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw buildUploadError(res, body);
-        }
-        const updated = await res.json();
+        // Headers (esp. Authorization) are rebuilt inside the lambda so a
+        // post-401 retry picks up the fresh access token.
+        const updated = await withReauth(async () => {
+          const res = await fetch(updateUrl, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: payload
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw buildUploadError(res, body);
+          }
+          return res.json();
+        });
         revisionId = updated.headRevisionId || null;
       } else {
         const metadata = { name: FILE_NAME, parents: ['appDataFolder'] };
         const createUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,headRevisionId';
-        const blob = new Blob([payload], { type: 'application/json' });
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', blob);
-        const res = await fetch(createUrl, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}` },
-          body: form
+        const created = await withReauth(async () => {
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          form.append('file', new Blob([payload], { type: 'application/json' }));
+          const res = await fetch(createUrl, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${accessToken}` },
+            body: form
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw buildUploadError(res, body);
+          }
+          return res.json();
         });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw buildUploadError(res, body);
-        }
-        const created = await res.json();
         fileId = created.id;
         revisionId = created.headRevisionId || null;
       }
@@ -889,10 +976,10 @@
     async function readRemoteRevision() {
       if (!fileId) return null;
       try {
-        const res = await gapi.client.drive.files.get({
+        const res = await withReauth(() => gapi.client.drive.files.get({
           fileId,
           fields: 'headRevisionId'
-        });
+        }));
         return res.result?.headRevisionId || null;
       } catch (err) {
         const status = err?.status || err?.result?.error?.code;
@@ -970,11 +1057,7 @@
         console.error('Error loading records', err);
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) {
-          clearStoredToken();
-          accessToken = null;
-          if (gapiReady) gapi.client.setToken(null);
-          showSection('auth');
-          alert('Přihlášení vypršelo, přihlaste se znovu.');
+          handleFatal401();
           return;
         }
         if (!recordsLoaded) {
@@ -1019,6 +1102,8 @@
         }
       } catch (err) {
         console.error('Error saving record', err);
+        const status = err?.status || err?.result?.error?.code;
+        if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}
         alert('Chyba při ukládání: ' + describeDriveError(err));
       } finally {
@@ -1038,7 +1123,7 @@
       try {
         if (fileId) {
           try {
-            await gapi.client.drive.files.delete({ fileId });
+            await withReauth(() => gapi.client.drive.files.delete({ fileId }));
           } catch (err) {
             // 404 = already deleted on another device — fine
             const status = err?.status || err?.result?.error?.code;
@@ -1058,6 +1143,8 @@
         alert('Data byla smazána.');
       } catch (err) {
         console.error('Error wiping data', err);
+        const status = err?.status || err?.result?.error?.code;
+        if (status === 401) { handleFatal401(); return; }
         showSection('app');
         alert('Chyba při mazání: ' + describeDriveError(err));
       }
@@ -1119,6 +1206,8 @@
         downloadJsonText(raw);
       } catch (err) {
         console.error('Error exporting', err);
+        const status = err?.status || err?.result?.error?.code;
+        if (status === 401) { handleFatal401(); return; }
         alert('Chyba při exportu: ' + describeDriveError(err));
       } finally {
         exportBtn.textContent = originalText;
@@ -1220,6 +1309,8 @@
         alert(`Naimportováno ${toAdd.length} záznamů.`);
       } catch (err) {
         console.error('Error importing records', err);
+        const status = err?.status || err?.result?.error?.code;
+        if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); } catch {}
         renderRecords();
         renderChart();
@@ -1603,6 +1694,8 @@
       } catch (err) {
         console.error('Error deleting record', err);
         deletingIndex = -1;
+        const status = err?.status || err?.result?.error?.code;
+        if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); } catch {}
         renderRecords();
         restoreEditingDraft(editingDraft);
@@ -1672,6 +1765,8 @@
       } catch (err) {
         console.error('Error editing record', err);
         isSavingEdit = false;
+        const status = err?.status || err?.result?.error?.code;
+        if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}
         const failedLi = historyList.querySelector(`li[data-idx="${idx}"]`);
         if (failedLi) {

@@ -237,6 +237,24 @@ if migration somehow lets one slip through.
   warning that browsers throw on auto-fired popups without a user
   gesture. A token-client `error_callback` plus an 8-second timeout
   bail to the auth screen if the silent request hangs.
+- **Silent re-auth on 401 (mid-session)**: Drive primitives
+  (`findAppDataFile`, `fetchFromDrive`, `fetchContentByFileId`,
+  `readRemoteRevision`, `uploadRecords`, `wipeAllData`'s delete) are
+  wrapped in `withReauth()`. On a 401 the helper calls
+  `attemptSilentReauth()` (a promise-wrapped
+  `requestAccessToken({prompt:'none'})` with the same 8s timeout)
+  and retries the failed call once. Distinct from `attemptAutoLogin`:
+  this path only refreshes the access token and never calls
+  `onSignIn()`, so the in-flight save/load resumes seamlessly. The
+  token-client `callback`/`error_callback` branch on a
+  `pendingSilentReauth` state object to route the response back to
+  the awaiting promise. If silent re-auth itself fails, the original
+  401 bubbles up and each user-action catch block calls
+  `handleFatal401()` — clears the token, shows auth section, alerts
+  "Přihlášení vypršelo". Silent re-auth uses an iframe to
+  `accounts.google.com`; with third-party cookies blocked it will
+  typically fail and the user falls back to the explicit login
+  button (which opens a popup).
 - **New-record form**: a "teď" button is shown by default; clicking
   it swaps in a `datetime-local` input. On touch devices
   (`matchMedia('(pointer: coarse)')`) the input also fires
