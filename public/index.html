@@ -122,9 +122,17 @@
           </select>
         </label>
         <div class="flex items-center gap-2">
-          <button id="prev-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Předchozí</button>
+          <button id="prev-page" type="button" title="Předchozí" aria-label="Předchozí" class="p-1 bg-gray-200 rounded disabled:opacity-50 inline-flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
           <span id="page-info" class="text-gray-600"></span>
-          <button id="next-page" type="button" class="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Další</button>
+          <button id="next-page" type="button" title="Další" aria-label="Další" class="p-1 bg-gray-200 rounded disabled:opacity-50 inline-flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
         </div>
       </div>
       <ul id="history-list" class="space-y-2"></ul>
