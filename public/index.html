@@ -14,20 +14,8 @@
     frame-src https://accounts.google.com https://accounts.google.com/gsi https://content.googleapis.com;
     connect-src 'self' https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com;">
 
-  <!-- Tailwind CSS via Browser CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
-  <style type="text/tailwindcss">
-    @custom-variant dark (&:where(.dark, .dark *));
-  </style>
-  <style>
-    button:not(:disabled) { cursor: pointer; }
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    input[type=number] { -moz-appearance: textfield; }
-  </style>
+  <!-- Pre-built Tailwind CSS (see src/tailwind.css; built in CI). -->
+  <link rel="stylesheet" href="tailwind.css" />
   <script>
     // Apply system dark preference synchronously, before anything renders,
     // so the first paint matches the user's OS theme. Once the saved

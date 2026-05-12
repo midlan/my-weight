@@ -47,6 +47,13 @@ jobs:
           rsvg-convert -w 256 -h 256 public/icon.svg -o /tmp/icon.png
           python3 -c "from PIL import Image; Image.open('/tmp/icon.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48)])"
 
+      # Compile Tailwind utilities used in public/*.html into a single
+      # minified stylesheet. This replaces the @tailwindcss/browser CDN
+      # runtime which caused a flash of unstyled content on hard reload
+      # (the runtime scans the DOM and injects styles after parse).
+      - name: Build Tailwind CSS
+        run: npx --yes -p @tailwindcss/cli@4 -p tailwindcss@4 -- tailwindcss -i src/tailwind.css -o public/tailwind.css --minify
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

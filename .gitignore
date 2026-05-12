@@ -1,5 +1,8 @@
 # Generated at deploy time from public/icon.svg — see .github/workflows
 public/favicon.ico
 
+# Generated from src/tailwind.css at deploy time by the CI workflow.
+public/tailwind.css
+
 # Windows crash dumps that occasionally land here
 bash.exe.stackdump

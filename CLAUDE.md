@@ -39,16 +39,31 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   source changes. The generated `.ico` is gitignored.
 - `CLAUDE.md` — this file.
 
-## Tech / dependencies (all CDN, no install)
+## Tech / dependencies
 
-- Tailwind via `@tailwindcss/browser`.
+- Tailwind v4 — **compiled in CI** (not the browser runtime). Source
+  is `src/tailwind.css`; the CI workflow runs
+  `npx -p @tailwindcss/cli@4 -p tailwindcss@4 -- tailwindcss` to
+  emit a minified `public/tailwind.css` before the Cloudflare Pages
+  deploy. Both HTML files link it via `<link rel="stylesheet"
+  href="tailwind.css" />`. The generated file is gitignored — only
+  `src/tailwind.css` is the source of truth. The browser-runtime
+  build (`@tailwindcss/browser@4`) was replaced because it caused
+  a flash of unstyled content on hard reload (the runtime scans the
+  DOM and injects styles only after parse). Custom-variant declarations
+  (`@custom-variant dark`) and the small custom-CSS block
+  (cursor / number-input spinner suppression) live in
+  `src/tailwind.css`. Auto-content detection scans `public/**/*.html`
+  via an explicit `@source` directive in the source file.
 - Google Identity Services (`accounts.google.com/gsi/client`) for sign-in.
 - `gapi` client (`apis.google.com/js/api.js`) for Drive API calls.
-- Chart.js 4 + `chartjs-adapter-date-fns` for the weight chart.
+- Chart.js 4 + `chartjs-adapter-date-fns` for the weight chart, via
+  `cdn.jsdelivr.net`.
 
-CSP allows `https://cdn.jsdelivr.net` for the above plus the Google
-auth/api hosts. If you add another CDN package, it's already covered;
-if you add another origin, update the CSP `<meta>`.
+CSP allows `https://cdn.jsdelivr.net` (Chart.js) plus the Google
+auth/api hosts. Tailwind no longer needs jsdelivr at runtime, but the
+CSP entry stays because Chart.js still loads from there. If you add
+another origin, update the CSP `<meta>`.
 
 ## Drive storage
 

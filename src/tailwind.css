@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* Both HTML files in public/ use Tailwind classes; scan them explicitly
+   so a fresh CLI run finds every utility used. */
+@source "../public/**/*.html";
+
+/* Class-based dark mode (toggled on <html> by the early inline script
+   and applyTheme()); overrides the default media-query variant. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+button:not(:disabled) { cursor: pointer; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; }
