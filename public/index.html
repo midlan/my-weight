@@ -194,6 +194,9 @@
       <button id="privacy-menu-btn" class="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition">
         Zásady ochrany osobních údajů
       </button>
+      <button id="install-btn" class="hidden mt-2 w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+        Nainstalovat aplikaci
+      </button>
       <hr class="my-4 border-gray-200 dark:border-gray-700" />
       <button id="logout-btn" class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">
         Odhlásit se
@@ -272,6 +275,17 @@
     const privacyCloseBtn = document.getElementById('privacy-close-btn');
     const privacyMenuBtn = document.getElementById('privacy-menu-btn');
     const privacyLoginLink = document.getElementById('privacy-login-link');
+    const installBtn = document.getElementById('install-btn');
+    // PWA install state. Chrome (desktop + Android) fires
+    // beforeinstallprompt when our manifest + SW criteria are met; we
+    // stash the event and use it to power the menu button and the
+    // one-time first-login confirmation. iOS Safari never fires the
+    // event — users there install via Share → Add to Home Screen.
+    // Declared here (alongside the DOM ref) so the handler block a
+    // few lines below can safely close over them.
+    let deferredInstallPrompt = null;
+    let recordsHaveLoadedOnce = false;
+    const INSTALL_PROMPTED_KEY = 'my-weight:install-prompted';
     const exportBtn = document.getElementById('export-btn');
     const importBtn = document.getElementById('import-btn');
     const importInput = document.getElementById('import-input');
@@ -349,6 +363,61 @@
     privacyMenuBtn.addEventListener('click', openPrivacy);
     privacyLoginLink.addEventListener('click', (e) => { e.preventDefault(); openPrivacy(); });
     privacyCloseBtn.addEventListener('click', hidePrivacyOverlay);
+
+    function isStandalone() {
+      return !!(window.matchMedia?.('(display-mode: standalone)').matches
+        || window.navigator.standalone);
+    }
+    // Stored as an ISO 8601 timestamp (e.g. "2026-05-13T09:14:22.123Z")
+    // rather than a bare boolean so a future change can re-prompt
+    // after some interval (e.g. a year after dismissal) without
+    // needing a schema migration.
+    function markInstallPrompted() {
+      try { localStorage.setItem(INSTALL_PROMPTED_KEY, new Date().toISOString()); } catch {}
+    }
+    function hasBeenPrompted() {
+      try { return !!localStorage.getItem(INSTALL_PROMPTED_KEY); } catch { return false; }
+    }
+    async function triggerInstall() {
+      if (!deferredInstallPrompt) return;
+      // The event can only be used once — drop our reference before
+      // awaiting so a fast double-click can't re-fire it.
+      const e = deferredInstallPrompt;
+      deferredInstallPrompt = null;
+      installBtn.classList.add('hidden');
+      markInstallPrompted();
+      try { await e.prompt(); } catch (err) { console.warn('Install prompt failed', err); }
+    }
+    function maybePromptInstall() {
+      if (!deferredInstallPrompt) return;
+      if (isStandalone()) return;
+      if (hasBeenPrompted()) return;
+      markInstallPrompted();
+      const accept = confirm('Chcete přidat Moje váha na plochu jako aplikaci? Otevírá se rychleji a vypadá jako nativní aplikace.');
+      if (accept) triggerInstall();
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      // Suppress Chrome's automatic mini-infobar (where it still appears)
+      // so our menu button + first-login confirm own the install UX.
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      installBtn.classList.remove('hidden');
+      // If records already loaded before the event fired (race), kick
+      // the first-login prompt now; otherwise loadRecords will do it.
+      if (recordsHaveLoadedOnce) maybePromptInstall();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      installBtn.classList.add('hidden');
+      markInstallPrompted();
+    });
+
+    installBtn.addEventListener('click', () => {
+      menuOverlay.classList.add('hidden');
+      triggerInstall();
+    });
 
     function showLoading(msg = 'Načítám...') {
       loadingMessageEl.textContent = msg;
@@ -1188,6 +1257,11 @@
         renderRecords();
         renderChart();
         showSection('app');
+        recordsHaveLoadedOnce = true;
+        // If beforeinstallprompt already fired before login completed,
+        // ask now (otherwise the event handler will call this once the
+        // event arrives).
+        maybePromptInstall();
       } catch (err) {
         console.error('Error loading records', err);
         const status = err?.status || err?.result?.error?.code;
@@ -1312,6 +1386,7 @@
       importBtn.disabled = busy;
       importHelpBtn.disabled = busy;
       privacyMenuBtn.disabled = busy;
+      installBtn.disabled = busy;
       logoutBtn.disabled = busy;
       wipeBtn.disabled = busy;
     }

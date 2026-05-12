@@ -31,6 +31,18 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
     `window.onload`; its only job is to exist so Chrome's
     install prompt criterion is satisfied. No caching, no
     fetch interception (offline mode is a non-goal).
+  - PWA install UX (in `public/index.html`): the
+    `beforeinstallprompt` event is captured into
+    `deferredInstallPrompt`, which powers the "Nainstalovat
+    aplikaci" menu button (hidden until the event fires) and
+    a one-time first-login `confirm()` prompt. The localStorage
+    key `my-weight:install-prompted` stores the ISO timestamp
+    of when we last asked (or when the app got installed via
+    the `appinstalled` event), so a future change could
+    re-prompt after some interval without needing a migration.
+    iOS Safari never fires `beforeinstallprompt`, so the
+    button stays hidden on iOS and users install via Share →
+    Add to Home Screen.
   - `public/privacy.html` — standalone privacy policy page
     served at the same origin. Referenced from Google's OAuth
     consent screen and fetched lazily into an in-app modal so
