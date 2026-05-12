@@ -1,0 +1,5 @@
+# Generated at deploy time from public/icon.svg — see .github/workflows
+public/favicon.ico
+
+# Windows crash dumps that occasionally land here
+bash.exe.stackdump

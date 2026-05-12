@@ -26,6 +26,27 @@ jobs:
       # When real build steps appear later, they can either emit into
       # public/ directly or assemble a separate dist/ and point the
       # deploy command at it.
+
+      # The favicon.ico is generated from public/icon.svg on cache miss.
+      # Cache key is the hash of icon.svg, so the regen only runs when
+      # the source SVG actually changes. The .ico is gitignored — it's
+      # a build artifact, not a tracked file.
+      - name: Cache generated favicon.ico
+        id: favicon-cache
+        uses: actions/cache@v4
+        with:
+          path: public/favicon.ico
+          key: favicon-${{ hashFiles('public/icon.svg') }}
+
+      - name: Generate favicon.ico from icon.svg
+        if: steps.favicon-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends librsvg2-bin
+          pip install --quiet Pillow
+          rsvg-convert -w 256 -h 256 public/icon.svg -o /tmp/icon.png
+          python3 -c "from PIL import Image; Image.open('/tmp/icon.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48)])"
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

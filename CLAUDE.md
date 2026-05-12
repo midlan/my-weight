@@ -33,7 +33,10 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   Actions workflow that runs `wrangler pages deploy public` on
   every push to `main`. Requires repo secrets
   `CLOUDFLARE_API_TOKEN` (with Pages › Edit) and
-  `CLOUDFLARE_ACCOUNT_ID`.
+  `CLOUDFLARE_ACCOUNT_ID`. Also generates `public/favicon.ico`
+  from `public/icon.svg` before deploy; the step is cached on
+  the hash of `icon.svg`, so it only re-runs when the SVG
+  source changes. The generated `.ico` is gitignored.
 - `CLAUDE.md` — this file.
 
 ## Tech / dependencies (all CDN, no install)
