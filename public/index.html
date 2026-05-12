@@ -109,7 +109,7 @@
             <label for="weight" class="block text-sm font-medium">Hmotnost (kg)</label>
             <div class="mt-1 flex border border-gray-300 dark:border-gray-700 rounded shadow-sm overflow-hidden bg-white dark:bg-gray-800">
               <button type="button" id="weight-decrement" title="Snížit" class="px-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-xl font-medium border-r border-gray-300 dark:border-gray-700">−</button>
-              <input type="number" step="0.1" id="weight" class="flex-1 min-w-0 w-full bg-transparent text-gray-900 dark:text-gray-100 px-2 py-2 text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900" />
+              <input type="number" step="0.1" min="0" id="weight" class="flex-1 min-w-0 w-full bg-transparent text-gray-900 dark:text-gray-100 px-2 py-2 text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900" />
               <button type="button" id="weight-increment" title="Zvýšit" class="px-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 text-xl font-medium border-l border-gray-300 dark:border-gray-700">+</button>
             </div>
           </div>
@@ -366,7 +366,8 @@
     function adjustWeight(input, delta) {
       const cur = parseFloat(input.value);
       const base = Number.isNaN(cur) ? 0 : cur;
-      input.value = (Math.round((base + delta) * 10) / 10).toFixed(1);
+      const next = Math.max(0, base + delta);
+      input.value = (Math.round(next * 10) / 10).toFixed(1);
     }
     weightDecrementBtn.addEventListener('click', () => adjustWeight(weightInput, -0.1));
     weightIncrementBtn.addEventListener('click', () => adjustWeight(weightInput, 0.1));
@@ -1493,6 +1494,7 @@
         const wInput = document.createElement('input');
         wInput.type = 'number';
         wInput.step = '0.1';
+        wInput.min = '0';
         wInput.value = String(r.weight);
         wInput.className = 'flex-[4_1_0%] min-w-12 px-1 py-1 text-sm text-center focus:outline-none bg-transparent text-gray-900 dark:text-gray-100';
 
