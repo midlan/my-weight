@@ -27,25 +27,32 @@ jobs:
       # public/ directly or assemble a separate dist/ and point the
       # deploy command at it.
 
-      # The favicon.ico is generated from public/icon.svg on cache miss.
-      # Cache key is the hash of icon.svg, so the regen only runs when
-      # the source SVG actually changes. The .ico is gitignored — it's
-      # a build artifact, not a tracked file.
-      - name: Cache generated favicon.ico
-        id: favicon-cache
+      # Every raster derived from public/icon.svg is generated here:
+      # the legacy /favicon.ico, the PWA manifest icons (192 / 512),
+      # and the iOS apple-touch-icon (180). Cache key is the hash of
+      # icon.svg, so the regen only runs when the source SVG actually
+      # changes. All four files are gitignored build artifacts.
+      - name: Cache generated icon files
+        id: icons-cache
         uses: actions/cache@v4
         with:
-          path: public/favicon.ico
-          key: favicon-${{ hashFiles('public/icon.svg') }}
+          path: |
+            public/favicon.ico
+            public/icon-192.png
+            public/icon-512.png
+            public/apple-touch-icon.png
+          key: icons-${{ hashFiles('public/icon.svg') }}
 
-      - name: Generate favicon.ico from icon.svg
-        if: steps.favicon-cache.outputs.cache-hit != 'true'
+      - name: Generate icon files from icon.svg
+        if: steps.icons-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends librsvg2-bin
           pip install --quiet Pillow
-          rsvg-convert -w 256 -h 256 public/icon.svg -o /tmp/icon.png
-          python3 -c "from PIL import Image; Image.open('/tmp/icon.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48)])"
+          rsvg-convert -w 512 -h 512 public/icon.svg -o public/icon-512.png
+          rsvg-convert -w 192 -h 192 public/icon.svg -o public/icon-192.png
+          rsvg-convert -w 180 -h 180 public/icon.svg -o public/apple-touch-icon.png
+          python3 -c "from PIL import Image; Image.open('public/icon-512.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
 
       # Compile Tailwind utilities used in public/*.html into a single
       # minified stylesheet. This replaces the @tailwindcss/browser CDN

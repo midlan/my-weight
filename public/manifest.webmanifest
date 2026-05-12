@@ -1,0 +1,16 @@
+{
+  "name": "Moje váha",
+  "short_name": "Moje váha",
+  "description": "Osobní sledování hmotnosti se zápisem do Google Drive.",
+  "lang": "cs",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1DB954",
+  "icons": [
+    { "src": "icon.svg",       "type": "image/svg+xml", "sizes": "any" },
+    { "src": "icon-192.png",   "type": "image/png",     "sizes": "192x192" },
+    { "src": "icon-512.png",   "type": "image/png",     "sizes": "512x512" }
+  ]
+}

@@ -6,6 +6,11 @@
   <title>Moje váha</title>
   <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#1DB954" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Moje váha" />
 
   <!-- Content Security Policy -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self';
@@ -657,6 +662,15 @@
     window.onload = () => {
       initGapi();
       initGis();
+      // Register the SW so Chrome offers "Install app" on mobile. The SW
+      // itself doesn't cache anything — it exists to satisfy the install
+      // criterion. Failure is non-fatal (e.g. http:// dev, file://, or
+      // browsers without SW support).
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => {
+          console.warn('Service worker registration failed', err);
+        });
+      }
     };
 
     function activateDatetimeInput() {

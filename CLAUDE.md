@@ -22,6 +22,15 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   a new file here and the next deploy picks it up automatically.
   - `public/index.html` — the entire app (markup + Tailwind CDN
     + inline JS).
+  - `public/manifest.webmanifest` — PWA manifest. Linked from
+    `index.html`; declares the app name, `display: standalone`,
+    theme/background colors, and the icon set. Lets mobile users
+    "Add to Home Screen" and get a launcher icon that opens
+    without browser chrome.
+  - `public/sw.js` — minimal service worker. Registered from
+    `window.onload`; its only job is to exist so Chrome's
+    install prompt criterion is satisfied. No caching, no
+    fetch interception (offline mode is a non-goal).
   - `public/privacy.html` — standalone privacy policy page
     served at the same origin. Referenced from Google's OAuth
     consent screen and fetched lazily into an in-app modal so
@@ -33,10 +42,12 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   Actions workflow that runs `wrangler pages deploy public` on
   every push to `main`. Requires repo secrets
   `CLOUDFLARE_API_TOKEN` (with Pages › Edit) and
-  `CLOUDFLARE_ACCOUNT_ID`. Also generates `public/favicon.ico`
-  from `public/icon.svg` before deploy; the step is cached on
-  the hash of `icon.svg`, so it only re-runs when the SVG
-  source changes. The generated `.ico` is gitignored.
+  `CLOUDFLARE_ACCOUNT_ID`. Also generates the icon raster set
+  (`favicon.ico`, `icon-192.png`, `icon-512.png`,
+  `apple-touch-icon.png`) from `public/icon.svg` before deploy;
+  the step is cached on the hash of `icon.svg`, so it only
+  re-runs when the SVG source changes. All four generated files
+  are gitignored.
 - `CLAUDE.md` — this file.
 
 ## Tech / dependencies
