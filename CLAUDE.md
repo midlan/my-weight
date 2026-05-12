@@ -42,10 +42,15 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
 ## Tech / dependencies
 
 - Tailwind v4 — **compiled in CI** (not the browser runtime). Source
-  is `src/tailwind.css`; the CI workflow runs
-  `npx -p @tailwindcss/cli@4 -p tailwindcss@4 -- tailwindcss` to
-  emit a minified `public/tailwind.css` before the Cloudflare Pages
-  deploy. Both HTML files link it via `<link rel="stylesheet"
+  is `src/tailwind.css`; the CI workflow downloads the standalone
+  `tailwindcss-linux-x64` binary from the tailwindlabs/tailwindcss
+  GitHub releases and runs it to emit a minified
+  `public/tailwind.css` before the Cloudflare Pages deploy. The
+  standalone binary is used (vs. the npm CLI) because it bundles the
+  Tailwind engine — the npm CLI relies on a `node_modules/tailwindcss/`
+  walkable from the source CSS to satisfy `@import "tailwindcss";`,
+  which requires either a `package.json` + `npm install` in the repo
+  or a similar setup. The standalone binary needs none of that. Both HTML files link it via `<link rel="stylesheet"
   href="tailwind.css" />`. The generated file is gitignored — only
   `src/tailwind.css` is the source of truth. The browser-runtime
   build (`@tailwindcss/browser@4`) was replaced because it caused
