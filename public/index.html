@@ -1023,7 +1023,7 @@
           datetimeIso = dt.toISOString();
         }
         if (findDuplicateRecord(datetimeIso) !== -1) {
-          alert('Záznam s tímto datem již existuje.');
+          alert(`Záznam s tímto datem a časem již existuje (${formatCzechDateTime(new Date(datetimeIso))}).`);
           return;
         }
         const note = noteInput.value.trim();
@@ -1298,7 +1298,7 @@
         if (!success) {
           renderRecords();
           renderChart();
-          alert('Záznam s tímto datem byl mezitím přidán z jiného zařízení; nebyl uložen.');
+          alert(`Záznam s tímto datem a časem byl mezitím přidán z jiného zařízení; nebyl uložen (${formatCzechDateTime(new Date(entry.datetime))}).`);
           return;
         }
         currentPage = 0;
@@ -1943,7 +1943,7 @@
         return;
       }
       if (findDuplicateRecord(datetimeIso, idx) !== -1) {
-        alert('Záznam s tímto datem již existuje.');
+        alert(`Záznam s tímto datem a časem již existuje (${formatCzechDateTime(new Date(datetimeIso))}).`);
         return;
       }
       const updated = { datetime: datetimeIso, weight: w };
