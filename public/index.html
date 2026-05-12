@@ -371,8 +371,19 @@
       const next = Math.max(0, base + delta);
       input.value = (Math.round(next * 10) / 10).toFixed(1);
     }
-    weightDecrementBtn.addEventListener('click', () => adjustWeight(weightInput, -0.1));
-    weightIncrementBtn.addEventListener('click', () => adjustWeight(weightInput, 0.1));
+    // `input` only fires for direct user typing/paste. Stepper clicks
+    // mutate input.value programmatically and need to mark dirty too;
+    // the edit-row's stepper uses its own input, so we don't touch the
+    // flag there.
+    weightInput.addEventListener('input', () => { weightInputDirty = true; });
+    weightDecrementBtn.addEventListener('click', () => {
+      weightInputDirty = true;
+      adjustWeight(weightInput, -0.1);
+    });
+    weightIncrementBtn.addEventListener('click', () => {
+      weightInputDirty = true;
+      adjustWeight(weightInput, 0.1);
+    });
 
     // 7-segment LCD in the header logo. Layout / encoding documented in
     // scale-icon-docs.md. Display caps at LOGO_MAX — entries above show
@@ -541,6 +552,11 @@
     let isSavingEdit = false;
     let deletingIndex = -1;
     let nowMode = true;
+    // True once the user has touched the new-record weight input (typed,
+    // pasted, or used the +/- steppers). A dirty input is left alone by
+    // prefillWeightInput(); the flag clears again after a successful
+    // save so the field can resume tracking the latest record.
+    let weightInputDirty = false;
     const expandedNotes = new WeakSet();
     let silentAttempt = false;
     let silentTimeoutId = null;
@@ -1171,7 +1187,6 @@
         applyTheme(currentTheme);
         renderRecords();
         renderChart();
-        prefillWeightInput();
         showSection('app');
       } catch (err) {
         console.error('Error loading records', err);
@@ -1190,7 +1205,6 @@
         applyTheme(currentTheme);
         renderRecords();
         renderChart();
-        prefillWeightInput();
         showSection('app');
         alert('Chyba při načítání: ' + describeDriveError(err));
       }
@@ -1214,6 +1228,10 @@
           return;
         }
         currentPage = 0;
+        // Form submitted successfully — the input value the user typed
+        // now equals the newest record, so the field can resume tracking
+        // future record changes (delete/edit) automatically.
+        weightInputDirty = false;
         renderRecords();
         renderChart();
         noteInput.value = '';
@@ -1535,6 +1553,9 @@
     }
 
     function prefillWeightInput() {
+      // Dirty input == user has expressed intent; leave it alone until
+      // the next successful save clears the flag.
+      if (weightInputDirty) return;
       const valid = records.filter(r => r && typeof r.weight === 'number' && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
       if (valid.length === 0) {
         weightInput.value = '';
@@ -1957,11 +1978,13 @@
     applyTheme(effectiveTheme());
 
     function renderChart() {
-      // Piggyback the logo display so it stays in sync with the data
-      // without an extra hook in every action's success path. Theme-only
-      // re-renders are idempotent. Runs before the Chart.js bailout so
-      // the logo still updates even if the chart library failed to load.
+      // Piggyback the logo display and the new-record form prefill so
+      // they stay in sync with the data without an extra hook in every
+      // action's success path. Both are idempotent on theme-only
+      // re-renders. Runs before the Chart.js bailout so the side
+      // effects still happen even if the chart library failed to load.
       updateLogoFromLatest();
+      prefillWeightInput();
       if (typeof Chart === 'undefined') return;
       const fromVal = rangeFromInput.value;
       const toVal = rangeToInput.value;
