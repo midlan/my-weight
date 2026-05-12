@@ -604,6 +604,15 @@
       clearStoredToken();
       accessToken = null;
       if (gapiReady) gapi.client.setToken(null);
+      // Clear in-memory data so the auth screen doesn't leak the last
+      // weight via the header logo, and so onSignIn's loadRecords()
+      // starts from a clean slate. Matches the explicit-logout posture.
+      records = [];
+      settings = {};
+      fileId = null;
+      revisionId = null;
+      recordsLoaded = false;
+      updateLogoFromLatest();
       showSection('auth');
       alert('Přihlášení vypršelo, přihlaste se znovu.');
     }

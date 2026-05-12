@@ -172,6 +172,10 @@ Google access tokens are 1 hour. Quick ways to simulate expiry:
 - Original 401 re-thrown.
 - Catch block calls `handleFatal401()`:
   - `my-weight:token` removed from localStorage.
+  - In-memory `records` / `settings` / `fileId` / `revisionId` reset.
+  - Header logo display resets to the placeholder `72.5` —
+    **verify** the previous user's weight is not visible on the
+    auth screen.
   - Auth section shown.
   - Alert: `Přihlášení vypršelo, přihlaste se znovu.`
 - "Přihlásit se" → popup → re-auth → app reloads with records.
@@ -184,7 +188,8 @@ https://myaccount.google.com/permissions. Back in the app, save a record.
 **Expected:**
 
 - Silent reauth fires but fails (no consent on file).
-- `handleFatal401()` → auth section + alert.
+- `handleFatal401()` → records cleared, logo reset to 72.5, auth
+  section + alert.
 - "Přihlásit se" → popup will include the consent screen (because
   access was revoked). User re-grants → records load.
 
@@ -201,6 +206,8 @@ https://myaccount.google.com/permissions. Back in the app, save a record.
 - Menu closes, auth section shown.
 - In-memory state (`records`, `settings`, `fileId`, `revisionId`,
   `recordsLoaded`, paging, edit mode) reset.
+- Header logo display resets to the placeholder `72.5` — **verify**
+  the previous user's weight is not visible on the auth screen.
 
 ### S11. Wipe all data
 
