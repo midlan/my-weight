@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
-/* Both HTML files in public/ use Tailwind classes; scan them explicitly
-   so a fresh CLI run finds every utility used. */
-@source "../public/**/*.html";
+/* HTML files in public/ use Tailwind utilities; icon.svg also carries
+   class="w-12 h-12" on its root so the build-time inlined copy is sized
+   correctly. Scan both extensions explicitly. */
+@source "../public/**/*.{html,svg}";
 
 /* Class-based dark mode (toggled on <html> by the early inline script
    and applyTheme()); overrides the default media-query variant. */

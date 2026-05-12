@@ -197,6 +197,72 @@ Both `renderRecords()` and `renderChart()` filter out records whose
 `datetime` doesn't parse, so a single bad row cannot crash the UI even
 if migration somehow lets one slip through.
 
+## Header logo (7-segment LCD)
+
+The header logo is a scale icon with a 4-position 7-segment LCD
+display. JS toggles the `.on` class on individual segment elements
+to show the latest weight value. Layout / segment encoding lives in
+`scale-icon-docs.md` (at repo root); a standalone playground
+(`demo.html`, also at root) lets you eyeball segment combos. Both
+the favicon and the playground load the static `public/icon.svg`
+(it paints "72.5" via `.default-on` classes).
+
+The SVG is **a single source of truth** — `public/icon.svg`. In
+`public/index.html` it is referenced as a normal `<img>` with a
+`data-inline-svg` marker attribute:
+
+```html
+<img src="icon.svg" alt="" data-inline-svg />
+```
+
+`id="logo"`, `class="w-12 h-12"`, and `aria-hidden="true"` are
+baked into the SVG root element (favicon use ignores them). The
+CI workflow has a single Perl one-liner that slurps both files,
+substitutes every `<img data-inline-svg>` for the contents of
+`icon.svg`, accumulates the substitution count, and dies if the
+count isn't exactly 1. Exactly-one is a deliberate guardrail —
+an accidental second occurrence (e.g. example markup in prose)
+fails the build instead of silently rewriting the wrong place.
+
+The repo's `public/index.html` stays clean — only the CI working
+copy gets the inline expansion. Because of the count-check
+guardrail, avoid writing literal `<img ... data-inline-svg ...>`
+text in comments or docs; refer to the marker as
+"`data-inline-svg`" alongside a bare `<img>` instead.
+
+Key pieces in `public/index.html`:
+
+- A `LOGO_AVAILABLE` flag is set once at script load by querying
+  `#logo .seg-1-a`. When the inliner ran in CI the selector
+  resolves; when it didn't (e.g. the page is served from a working
+  copy without running the inliner), `#logo` is still an `<img>` and
+  the selector returns null — every `setLogo*`, `displayLogoWeight`,
+  and `updateLogoFromLatest` short-circuits. A `console.warn` makes
+  the disabled state obvious.
+- Initial paint uses `.default-on` classes baked into the SVG to
+  render "72.5" before JS runs. When `LOGO_AVAILABLE` is true the
+  script synchronously strips all `.default-on` classes and calls
+  `displayLogoWeight(72.5)` to hand control over to JS — same
+  segments, just driven by `.on` instead, so no visible transition.
+- The SVG's internal `<style>` scopes `.seg` / `.dp` / `.on` selectors
+  with `#logo` so they can't collide with anything else on the page.
+- `displayLogoWeight(w)` clamps to `[0, LOGO_MAX]` (currently 199.9)
+  and writes the four digits via `setLogoDigit` / `setLogoDecimal`.
+  Values ≥ 100 use all three integer positions plus one decimal;
+  values < 100 leave position 0 (and, when applicable, position 1)
+  blank.
+- `updateLogoFromLatest()` finds the newest valid record by datetime
+  and calls `displayLogoWeight(newest.weight)`; with zero records
+  it falls back to 72.5.
+- The hook runs once at the top of `renderChart()` so every action
+  that re-renders the chart (load / save / edit / delete / wipe /
+  import / theme change) keeps the logo in sync. `renderChart()`'s
+  early `Chart === 'undefined'` bailout sits *below* the logo
+  update so a Chart.js load failure doesn't freeze the logo.
+- The logout handler doesn't re-render the chart (chart is
+  destroyed), so it calls `updateLogoFromLatest()` directly to
+  drop the display back to the 72.5 default.
+
 ## Other implementation notes
 
 - **In-memory cache** (`records`, `settings`, `fileId`, `revisionId`,

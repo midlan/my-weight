@@ -1,4 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" id="logo" class="w-12 h-12" aria-hidden="true">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scale Icon — JS Demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #eee; padding: 30px; display: flex; flex-direction: column; align-items: center; gap: 20px; margin: 0; }
+  #icon { width: 300px; height: 300px; }
+  input { font-size: 1.2rem; padding: 8px 12px; width: 120px; text-align: center; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  button { padding: 8px 16px; cursor: pointer; }
+  h1 { margin: 0; font-size: 1.5rem; }
+</style>
+</head>
+<body>
+<h1>Scale Icon — JS Control Demo</h1>
+<svg id="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <!-- Reusable LCD segment: hexagon with half-length 22, half-thickness 7 (gap g=3 applied).
          Tips at (±22, 0), angled corners at (±15, ±7). 45° angle preserved. -->
@@ -102,3 +118,29 @@
     }
   </style>
 </svg>
+
+<div class="row">
+  <label>Weight: <input id="weight" type="number" step="0.1" value="72.5"></label>
+  <button onclick="updateDisplay()">Update</button>
+</div>
+<div class="row">
+  <button onclick="setWeight(0.0)">0.0</button>
+  <button onclick="setWeight(8.8)">8.8</button>
+  <button onclick="setWeight(72.5)">72.5</button>
+  <button onclick="setWeight(99.9)">99.9</button>
+  <button onclick="setWeight(150)">150</button>
+  <button onclick="setWeight(188.8)">188.8</button>
+</div>
+<script>
+document.querySelectorAll('.default-on').forEach(el => el.classList.remove('default-on'));
+const DIGIT_SEGMENTS = {0:['a','b','c','d','e','f'],1:['b','c'],2:['a','b','g','e','d'],3:['a','b','g','c','d'],4:['f','g','b','c'],5:['a','f','g','c','d'],6:['a','f','g','e','c','d'],7:['a','b','c'],8:['a','b','c','d','e','f','g'],9:['a','b','f','g','c','d']};
+function setSegment(p,l,on){const el=document.querySelector('.seg-'+p+'-'+l);if(el)el.classList.toggle('on',on);}
+function setDecimal(p,on){const el=document.querySelector('.dp-after-'+p);if(el)el.classList.toggle('on',on);}
+function setDigit(p,d){for(const s of 'abcdefg')setSegment(p,s,false);if(d!==null&&d>=0&&d<=9){for(const s of DIGIT_SEGMENTS[d])setSegment(p,s,true);}}
+function displayWeight(w){const r=Math.round(w*10)/10;const i=Math.floor(r);const dp=Math.round((r-i)*10);for(let p=0;p<=3;p++)setDigit(p,null);setDecimal(1,false);setDecimal(2,false);if(r>=100){setDigit(0,Math.floor(i/100));setDigit(1,Math.floor((i%100)/10));setDigit(2,i%10);if(dp>0){setDigit(3,dp);setDecimal(2,true);}}else{const t=Math.floor(i/10);if(t>0)setDigit(1,t);setDigit(2,i%10);setDigit(3,dp);setDecimal(2,true);}}
+function updateDisplay(){const w=parseFloat(document.getElementById('weight').value);if(!isNaN(w))displayWeight(w);}
+function setWeight(w){document.getElementById('weight').value=w;displayWeight(w);}
+displayWeight(72.5);
+</script>
+</body>
+</html>

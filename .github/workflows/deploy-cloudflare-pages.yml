@@ -60,6 +60,22 @@ jobs:
           chmod +x /tmp/tailwindcss
           /tmp/tailwindcss -i src/tailwind.css -o public/tailwind.css --minify
 
+      # The header logo is authored as a normal <img> tag with a
+      # data-inline-svg marker; this step swaps that <img> for the
+      # actual icon.svg contents so the in-page JS can manipulate the
+      # 7-segment elements directly. We require exactly one match per
+      # HTML file so an accidental second occurrence (e.g. example
+      # markup in prose) fails loudly instead of silently rewriting
+      # the wrong place.
+      - name: Inline icon.svg into index.html
+        working-directory: public
+        run: |
+          perl -i -0pe '
+            BEGIN { open(my $f, "<", "icon.svg") or die "icon.svg: $!"; local $/; $svg = <$f>; }
+            $c += s{<img\b[^>]*\bdata-inline-svg\b[^>]*?/?>}{$svg}g;
+            END { die "expected 1 <img data-inline-svg>, found $c\n" if $c != 1; }
+          ' index.html
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

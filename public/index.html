@@ -36,7 +36,11 @@
   <div class="bg-white dark:bg-gray-900 p-6 w-full min-h-screen sm:max-w-2xl sm:my-6 sm:min-h-0 sm:rounded-lg sm:shadow-lg relative">
     <header class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-2">
-        <img src="icon.svg" alt="" class="w-12 h-12" />
+        <!-- The CI workflow replaces this line with the contents of
+             icon.svg so JS can toggle 7-segment classes for the LCD
+             display. Marker attribute is data-inline-svg; size, id,
+             and aria are baked into the SVG root. -->
+        <img src="icon.svg" alt="" data-inline-svg />
         <h1 class="text-2xl font-bold">Moje váha</h1>
       </div>
       <button id="menu-btn" class="hidden p-1 rounded text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800" title="Menu">
@@ -364,6 +368,102 @@
     }
     weightDecrementBtn.addEventListener('click', () => adjustWeight(weightInput, -0.1));
     weightIncrementBtn.addEventListener('click', () => adjustWeight(weightInput, 0.1));
+
+    // 7-segment LCD in the header logo. Layout / encoding documented in
+    // scale-icon-docs.md. Display caps at LOGO_MAX — entries above show
+    // the cap rather than overflowing into a 3-integer-digit layout.
+    //
+    // The header element is an <img> with a "data-inline-svg" marker
+    // attribute; the CI workflow swaps it for the inlined SVG contents
+    // so this code can toggle individual segments. If that step didn't
+    // run (e.g. the page is served from the source tree directly),
+    // `#logo` is still an image element and the segment selector
+    // returns null. LOGO_AVAILABLE gates every mutation so the app
+    // stays functional with a static logo and we get a clear console
+    // signal that the build step is missing.
+    const LOGO_MAX = 199.9;
+    const LOGO_AVAILABLE = !!document.querySelector('#logo .seg-1-a');
+    if (!LOGO_AVAILABLE) {
+      console.warn(
+        'Header logo SVG not inlined (or missing expected segments); '
+        + 'dynamic weight display disabled. Did scripts/inline-svg.py run?'
+      );
+    }
+    const DIGIT_SEGMENTS = {
+      0: ['a','b','c','d','e','f'],
+      1: ['b','c'],
+      2: ['a','b','g','e','d'],
+      3: ['a','b','g','c','d'],
+      4: ['f','g','b','c'],
+      5: ['a','f','g','c','d'],
+      6: ['a','f','g','e','c','d'],
+      7: ['a','b','c'],
+      8: ['a','b','c','d','e','f','g'],
+      9: ['a','b','f','g','c','d'],
+    };
+    function setLogoSegment(p, l, on) {
+      if (!LOGO_AVAILABLE) return;
+      const el = document.querySelector(`#logo .seg-${p}-${l}`);
+      if (el) el.classList.toggle('on', on);
+    }
+    function setLogoDecimal(p, on) {
+      if (!LOGO_AVAILABLE) return;
+      const el = document.querySelector(`#logo .dp-after-${p}`);
+      if (el) el.classList.toggle('on', on);
+    }
+    function setLogoDigit(p, d) {
+      if (!LOGO_AVAILABLE) return;
+      for (const s of 'abcdefg') setLogoSegment(p, s, false);
+      if (d !== null && d >= 0 && d <= 9) {
+        for (const s of DIGIT_SEGMENTS[d]) setLogoSegment(p, s, true);
+      }
+    }
+    function displayLogoWeight(w) {
+      if (!LOGO_AVAILABLE) return;
+      const clamped = Math.min(Math.max(0, w), LOGO_MAX);
+      const r = Math.round(clamped * 10) / 10;
+      const i = Math.floor(r);
+      const dp = Math.round((r - i) * 10);
+      for (let p = 0; p <= 3; p++) setLogoDigit(p, null);
+      setLogoDecimal(1, false);
+      setLogoDecimal(2, false);
+      if (r >= 100) {
+        setLogoDigit(0, Math.floor(i / 100));
+        setLogoDigit(1, Math.floor((i % 100) / 10));
+        setLogoDigit(2, i % 10);
+        setLogoDigit(3, dp);
+        setLogoDecimal(2, true);
+      } else {
+        const t = Math.floor(i / 10);
+        if (t > 0) setLogoDigit(1, t);
+        setLogoDigit(2, i % 10);
+        setLogoDigit(3, dp);
+        setLogoDecimal(2, true);
+      }
+    }
+    function updateLogoFromLatest() {
+      if (!LOGO_AVAILABLE) return;
+      const valid = records.filter(r =>
+        r && typeof r.weight === 'number'
+        && typeof r.datetime === 'string'
+        && !Number.isNaN(new Date(r.datetime).getTime())
+      );
+      if (valid.length === 0) {
+        displayLogoWeight(72.5);
+        return;
+      }
+      const newest = valid.reduce((m, r) =>
+        new Date(r.datetime) > new Date(m.datetime) ? r : m);
+      displayLogoWeight(newest.weight);
+    }
+    if (LOGO_AVAILABLE) {
+      // Hand control of the SVG from the CSS default-on classes to
+      // JS-toggled .on classes. Synchronous, so no intermediate
+      // "blank" paint between the two visibility states.
+      document.querySelectorAll('#logo .default-on').forEach(el => el.classList.remove('default-on'));
+      displayLogoWeight(72.5);
+    }
+
     const paginationEl = document.getElementById('pagination');
     const prevPageBtn = document.getElementById('prev-page');
     const nextPageBtn = document.getElementById('next-page');
@@ -763,6 +863,9 @@
       applyRangePreset(effectivePreset());
       currentTheme = effectiveTheme();
       applyTheme(currentTheme);
+      // renderChart isn't called on logout (chart was destroyed), so the
+      // logo would otherwise still show the prior user's weight.
+      updateLogoFromLatest();
     });
 
     async function onSignIn() {
@@ -1831,6 +1934,11 @@
     applyTheme(effectiveTheme());
 
     function renderChart() {
+      // Piggyback the logo display so it stays in sync with the data
+      // without an extra hook in every action's success path. Theme-only
+      // re-renders are idempotent. Runs before the Chart.js bailout so
+      // the logo still updates even if the chart library failed to load.
+      updateLogoFromLatest();
       if (typeof Chart === 'undefined') return;
       const fromVal = rangeFromInput.value;
       const toVal = rangeToInput.value;
