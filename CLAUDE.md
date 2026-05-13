@@ -223,6 +223,27 @@ When `migrate()` reports `migrated: true` and a file already exists,
 right after the first successful render. This keeps every subsequent
 load on the fast path.
 
+### Unreadable-data recovery flow
+
+If `migrate()` ends up with **zero extracted records** despite the
+input looking like it carried data (`inputHadContent` true — non-empty
+array, non-empty records object, or any other non-null parsed value
+that isn't an empty `{}`), it returns `unrecognized: true` and
+suppresses the `migrated` flag so `loadRecords()` won't silently
+overwrite the file. The load handler instead surfaces a `confirm()`:
+
+- **OK** → download the raw bytes as `my-weight-YYYY-MM-DD.json`
+  (so the user has a copy to inspect) and overwrite the Drive file
+  with an empty v2 envelope. App continues with an empty list.
+- **Cancel** → stay on the loading section with a Czech "reload
+  after manual repair" message; no Drive write happens, so the
+  broken file is preserved for diagnosis.
+
+The conflict-refetch path (`fetchContentByFileId` called from inside
+`uploadWithConflictRetry`) intentionally *doesn't* trigger this
+prompt — interrupting an in-flight save with a recovery dialog
+would be jarring, and a save is about to overwrite the file anyway.
+
 ### Future-version reload guard
 
 `migrate()` also defends against the *opposite* direction — JS that's

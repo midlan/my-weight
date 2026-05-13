@@ -1078,7 +1078,7 @@
       const result = migrate(parsed);
       records = result.records;
       settings = result.settings;
-      return { exists: true, migrated: result.migrated, raw };
+      return { exists: true, migrated: result.migrated, unrecognized: !!result.unrecognized, raw };
     }
 
     // Refetch content for an already-known fileId. Skips the list query
@@ -1153,14 +1153,22 @@
         recordsOut[key] = value;
       };
 
+      // True when the input *looked like* it had record data we could
+      // not extract — used at the end to flag unrecognized files so
+      // loadRecords offers the user a backup-and-reset recovery flow
+      // instead of silently overwriting with an empty envelope.
+      let inputHadContent = false;
+
       let inputRecords;
       let inputIsObject = false;
       if (Array.isArray(parsed)) {
         inputRecords = parsed;
+        inputHadContent = parsed.length > 0;
         migrated = true;
       } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) {
         // v1 envelope (or any earlier envelope that used an array).
         inputRecords = parsed.records;
+        inputHadContent = parsed.records.length > 0;
         if (parsed.version !== SCHEMA_VERSION) migrated = true;
         if (parsed.settings && typeof parsed.settings === 'object' && !Array.isArray(parsed.settings)) {
           parsedSettings = parsed.settings;
@@ -1171,6 +1179,7 @@
         // v2 envelope.
         inputRecords = parsed.records;
         inputIsObject = true;
+        inputHadContent = Object.keys(parsed.records).length > 0;
         if (parsed.version !== SCHEMA_VERSION) migrated = true;
         if (parsed.settings && typeof parsed.settings === 'object' && !Array.isArray(parsed.settings)) {
           parsedSettings = parsed.settings;
@@ -1178,6 +1187,14 @@
       } else {
         inputRecords = [];
         migrated = true;
+        // Unrecognized object shapes (e.g. `{records: "garbage"}`, or
+        // bare primitives that aren't null/undefined) suggest data we
+        // can't read. null / undefined / `{}` are treated as genuinely
+        // empty and rewritten cleanly.
+        if (parsed !== null && parsed !== undefined
+            && (typeof parsed !== 'object' || Object.keys(parsed).length > 0)) {
+          inputHadContent = true;
+        }
       }
 
       if (inputIsObject) {
@@ -1211,7 +1228,13 @@
         }
       }
 
-      return { records: recordsOut, settings: parsedSettings, migrated };
+      // We saw something that looked like data but couldn't extract a
+      // single valid record. Flag it so loadRecords can show the
+      // backup-and-reset prompt instead of silently overwriting.
+      const unrecognized = inputHadContent && Object.keys(recordsOut).length === 0;
+      if (unrecognized) migrated = false;  // don't rewrite blindly
+
+      return { records: recordsOut, settings: parsedSettings, migrated, unrecognized };
     }
 
     function buildUploadError(res, body) {
@@ -1339,7 +1362,28 @@
       try {
         const result = await fetchFromDrive();
         recordsLoaded = true;
-        if (result.migrated && fileId) {
+        if (result.unrecognized) {
+          // The file exists and is valid JSON, but migrate() couldn't
+          // extract a single record from it (corruption, mid-write,
+          // manual edit gone wrong, …). Don't silently overwrite it
+          // — let the user grab a copy of the raw bytes first.
+          const proceed = confirm(
+            'Aplikace nemohla přečíst data ze souboru — formát není rozpoznán nebo soubor je poškozený.\n\n'
+            + 'Kliknutím na OK se stáhne záloha původního souboru a obsah na Google Drive se vymaže, abyste mohli pokračovat s prázdným seznamem.\n\n'
+            + 'Kliknutím na Zrušit aplikace zůstane nedostupná dokud soubor neopravíte ručně přes Google Drive (a stránku poté obnovíte).'
+          );
+          if (proceed) {
+            downloadJsonText(result.raw);
+            records = {};
+            settings = {};
+            try { await uploadRecords(); } catch (e) { console.warn('Post-recovery reset upload failed', e); }
+          } else {
+            // Stay on the loading section with a clear stuck-state
+            // message; reload after manual repair re-runs the load.
+            showLoading('Aplikace nemohla přečíst data. Po opravě souboru na Google Drive obnovte stránku.');
+            return;
+          }
+        } else if (result.migrated && fileId) {
           // Best-effort rewrite of legacy data into the canonical envelope.
           // A 412 here would mean another device wrote concurrently — drop it
           // silently; the rewrite will be retried on the next load.
