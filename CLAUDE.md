@@ -31,6 +31,17 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
     `window.onload`; its only job is to exist so Chrome's
     install prompt criterion is satisfied. No caching, no
     fetch interception (offline mode is a non-goal).
+  - Build metadata: an inline `<script>` early in `<head>` sets
+    `window.__BUILD = { sha, date }`. Source HTML carries literal
+    placeholders `__BUILD_SHA__` / `__BUILD_DATE__`; the deploy
+    workflow rewrites them with `git rev-parse --short HEAD` and the
+    current UTC ISO timestamp via `perl -i -pe`, dying if either
+    placeholder doesn't appear exactly once. Local serves from the
+    source tree keep the placeholders, and `showAbout()` detects
+    that by `startsWith('__')` and labels them "dev (lokální
+    sestavení)" instead. The About dialog (menu → "O aplikaci")
+    is a plain Czech `alert()` with schema version, build SHA,
+    release date, record count, and the repo URL.
   - PWA install UX (in `public/index.html`): the
     `beforeinstallprompt` event is captured into
     `deferredInstallPrompt`, which powers the "Nainstalovat

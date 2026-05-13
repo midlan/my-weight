@@ -83,6 +83,25 @@ jobs:
             END { die "expected 1 <img data-inline-svg>, found $c\n" if $c != 1; }
           ' index.html
 
+      # Stamp the build SHA + timestamp into window.__BUILD so the
+      # About dialog can display them. Source HTML carries the
+      # literal placeholders __BUILD_SHA__ / __BUILD_DATE__; we
+      # require exactly one substitution of each so a missing
+      # placeholder or accidental duplicate fails the build.
+      - name: Inject build metadata
+        working-directory: public
+        run: |
+          sha=$(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD)
+          date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          perl -i -pe '
+            $sha_count += s/__BUILD_SHA__/'"$sha"'/g;
+            $date_count += s/__BUILD_DATE__/'"$date"'/g;
+            END {
+              die "expected 1 __BUILD_SHA__, found $sha_count\n" if $sha_count != 1;
+              die "expected 1 __BUILD_DATE__, found $date_count\n" if $date_count != 1;
+            }
+          ' index.html
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

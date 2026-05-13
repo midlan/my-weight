@@ -22,6 +22,16 @@
   <!-- Pre-built Tailwind CSS (see src/tailwind.css; built in CI). -->
   <link rel="stylesheet" href="tailwind.css" />
   <script>
+    // Build metadata. The two literal placeholders are substituted by
+    // the deploy workflow with the git short SHA and an ISO UTC
+    // timestamp. Local serves from the source tree keep them as-is,
+    // so the About dialog will show "dev" rather than fake values.
+    window.__BUILD = {
+      sha: '__BUILD_SHA__',
+      date: '__BUILD_DATE__',
+    };
+  </script>
+  <script>
     // Apply system dark preference synchronously, before anything renders,
     // so the first paint matches the user's OS theme. Once the saved
     // settings.theme loads from Drive, applyTheme() may override this.
@@ -194,6 +204,9 @@
       <button id="privacy-menu-btn" class="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition">
         Zásady ochrany osobních údajů
       </button>
+      <button id="about-btn" class="mt-2 w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+        O aplikaci
+      </button>
       <button id="install-btn" class="hidden mt-2 w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition">
         Nainstalovat aplikaci
       </button>
@@ -280,6 +293,7 @@
     const privacyMenuBtn = document.getElementById('privacy-menu-btn');
     const privacyLoginLink = document.getElementById('privacy-login-link');
     const installBtn = document.getElementById('install-btn');
+    const aboutBtn = document.getElementById('about-btn');
     // PWA install state. Chrome (desktop + Android) fires
     // beforeinstallprompt when our manifest + SW criteria are met; we
     // stash the event and use it to power the menu button and the
@@ -428,6 +442,40 @@
       menuOverlay.classList.add('hidden');
       triggerInstall();
     });
+
+    function showAbout() {
+      menuOverlay.classList.add('hidden');
+      const build = window.__BUILD || {};
+      // Source HTML carries placeholder strings (prefixed __); CI
+      // rewrites them with real values. Anything starting with __ here
+      // means the rewrite didn't run (local serve from the source
+      // tree). We test by prefix rather than equality so the literal
+      // placeholder appears only inside the script block above — the
+      // CI step requires exactly one occurrence per file.
+      const isPlaceholderSha = !build.sha || build.sha.startsWith('__');
+      const isPlaceholderDate = !build.date || build.date.startsWith('__');
+      const sha = isPlaceholderSha ? 'dev (lokální sestavení)' : build.sha;
+      let dateLabel;
+      if (isPlaceholderDate) {
+        dateLabel = 'dev (lokální sestavení)';
+      } else {
+        const d = new Date(build.date);
+        dateLabel = Number.isNaN(d.getTime())
+          ? build.date
+          : `${d.toLocaleString()} (${build.date})`;
+      }
+      alert([
+        'Moje váha',
+        '',
+        `Schéma dat: v${SCHEMA_VERSION}`,
+        `Build: ${sha}`,
+        `Vydáno: ${dateLabel}`,
+        `Počet záznamů: ${recordsCount()}`,
+        '',
+        'Zdrojový kód: https://github.com/midlan/my-weight',
+      ].join('\n'));
+    }
+    aboutBtn.addEventListener('click', showAbout);
 
     function showLoading(msg = 'Načítám...') {
       loadingMessageEl.textContent = msg;
@@ -1531,6 +1579,7 @@
       importBtn.disabled = busy;
       importHelpBtn.disabled = busy;
       privacyMenuBtn.disabled = busy;
+      aboutBtn.disabled = busy;
       installBtn.disabled = busy;
       logoutBtn.disabled = busy;
       wipeBtn.disabled = busy;
