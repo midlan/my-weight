@@ -9,3 +9,10 @@ public/tailwind.css
 
 # Windows crash dumps that occasionally land here
 bash.exe.stackdump
+
+# Playwright test infra (scoped to tests/)
+tests/node_modules/
+tests/test-results/
+tests/playwright-report/
+tests/blob-report/
+tests/playwright/.cache/

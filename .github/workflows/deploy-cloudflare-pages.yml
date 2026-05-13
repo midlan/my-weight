@@ -40,6 +40,36 @@ jobs:
           done
           jq empty public/manifest.webmanifest
 
+      # Playwright loads public/index.html via file:// in Chromium and
+      # calls top-level functions (migrate, toMinuteKey, …) via
+      # page.evaluate. Covers the data-migration / schema branches that
+      # the curl smoke can't reach because they're pure logic.
+      - name: Set up Node for tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tests/package-lock.json
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/package-lock.json') }}
+
+      - name: Install test dependencies + browser
+        working-directory: tests
+        run: |
+          npm ci
+          # Idempotent: system apt deps run every time (cheap if already
+          # installed); binary install is a no-op when the cache restored
+          # the browser already.
+          npx playwright install --with-deps chromium
+
+      - name: Run pure-function tests
+        working-directory: tests
+        run: npx playwright test
+
       # The app is static and lives in public/. To publish a new file
       # to the site, drop it in public/ — no workflow change needed.
       # When real build steps appear later, they can either emit into
