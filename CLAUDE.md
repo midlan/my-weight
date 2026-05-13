@@ -71,6 +71,18 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   the step is cached on the hash of `icon.svg`, so it only
   re-runs when the SVG source changes. All four generated files
   are gitignored.
+- `tests/` — automated test infra (npm-scoped to this dir so the
+  rest of the project stays toolchain-free).
+  - `tests/migrate.spec.js` — Playwright pure-function tests for
+    `migrate()` and `toMinuteKey()` (and a place to grow). Loads
+    `public/index.html` via `file://` in headless Chromium and
+    invokes the top-level functions through `page.evaluate`. No
+    UI assertions; the post-deploy curl smoke covers markup.
+  - `tests/playwright.config.js`, `tests/package.json`,
+    `tests/package-lock.json` — Playwright runner config and
+    pinned deps. `tests/node_modules` is gitignored.
+  - `tests/auth-manual.md` — manual OAuth / popup / 3p-cookies
+    checklist that's firmly outside automated-test scope.
 - `CLAUDE.md` — this file.
 
 ## Tech / dependencies
