@@ -21,6 +21,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Cheap static checks — fail fast before the longer build /
+      # deploy steps.
+      # - htmlhint: unclosed tags, duplicate ids, invalid attribute
+      #   syntax, missing title, etc. (default rules).
+      # - node --check: parse-only syntax check on every inline
+      #   <script> block (skipping ones with src=). Extracts each
+      #   block via perl, concatenates, pipes to node which exits
+      #   non-zero on the first syntax error.
+      # - jq: well-formed JSON for the PWA manifest.
+      - name: Validate HTML, JS, and JSON syntax
+        run: |
+          npx --yes htmlhint@1 public/*.html
+          for f in public/*.html; do
+            perl -0ne 'while (/<script(?![^>]*\bsrc=)[^>]*>(.*?)<\/script>/sg) { print "$1\n;\n"; }' "$f" \
+              | node --check - \
+              || { echo "::error file=$f::JS syntax error in inline <script>"; exit 1; }
+          done
+          jq empty public/manifest.webmanifest
+
       # The app is static and lives in public/. To publish a new file
       # to the site, drop it in public/ — no workflow change needed.
       # When real build steps appear later, they can either emit into
