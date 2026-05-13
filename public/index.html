@@ -290,6 +290,12 @@
     let deferredInstallPrompt = null;
     let recordsHaveLoadedOnce = false;
     const INSTALL_PROMPTED_KEY = 'my-weight:install-prompted';
+    // sessionStorage flag — set when we hit a future schema version
+    // and trigger a one-shot location.reload() to pick up fresh JS.
+    // Survives only the current tab session; cleared on successful
+    // load. Prevents an infinite reload loop when the server is
+    // actually serving older code (e.g. intentional rollback).
+    const NEWER_SCHEMA_RELOAD_KEY = 'my-weight:reloaded-for-newer-schema';
     const exportBtn = document.getElementById('export-btn');
     const importBtn = document.getElementById('import-btn');
     const importInput = document.getElementById('import-input');
@@ -1097,7 +1103,43 @@
     //   - per-record `{date: "YYYY-MM-DD"}` legacy → noon UTC ISO
     // `migrated` flips true whenever the on-disk shape doesn't match v2
     // exactly, so loadRecords() will trigger a one-shot rewrite of the file.
-    function migrate(parsed) {
+    //
+    // If we encounter a *future* schema version (parsed.version > SCHEMA_VERSION),
+    // this JS is older than the data — typically a stale tab or cached
+    // bundle. `source: 'load'` (default) reloads the page once to pick up
+    // fresh JS; `source: 'import'` just throws so a user-initiated import
+    // fails loudly without unexpectedly refreshing the page.
+    function migrate(parsed, opts = {}) {
+      const source = opts.source || 'load';
+      if (parsed && typeof parsed === 'object'
+          && typeof parsed.version === 'number'
+          && parsed.version > SCHEMA_VERSION) {
+        if (source === 'load') {
+          let alreadyReloaded = false;
+          try { alreadyReloaded = !!sessionStorage.getItem(NEWER_SCHEMA_RELOAD_KEY); } catch {}
+          if (!alreadyReloaded) {
+            try { sessionStorage.setItem(NEWER_SCHEMA_RELOAD_KEY, '1'); } catch {}
+            location.reload();
+            // location.reload() schedules the navigation; throw to stop
+            // any further processing in the meantime. The flag tells
+            // caller catches to swallow the error silently — the page
+            // is about to unload, no point alerting.
+            const reloadErr = new Error('Reloading to pick up newer schema');
+            reloadErr.isReloadPending = true;
+            throw reloadErr;
+          }
+          // We already tried reloading once and the server is still
+          // serving this old code. Fall through to the throw below so
+          // the caller's catch path surfaces the user-visible alert.
+        }
+        const err = new Error(`Soubor používá novější verzi formátu (verze ${parsed.version}); tato verze aplikace ji nezná.`);
+        err.newerSchemaVersion = parsed.version;
+        throw err;
+      }
+      // Recognized version — clear the reload flag so a future
+      // encounter starts with a fresh attempt.
+      try { sessionStorage.removeItem(NEWER_SCHEMA_RELOAD_KEY); } catch {}
+
       let parsedSettings = {};
       let migrated = false;
       const recordsOut = {};
@@ -1315,6 +1357,9 @@
         // event arrives).
         maybePromptInstall();
       } catch (err) {
+        // Page reload is already on its way — don't disturb the user
+        // with an alert in the meantime.
+        if (err && err.isReloadPending) return;
         console.error('Error loading records', err);
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) {
@@ -1369,6 +1414,7 @@
         }
       } catch (err) {
         console.error('Error saving record', err);
+        if (err && err.isReloadPending) return;
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}
@@ -1409,6 +1455,7 @@
         alert('Data byla smazána.');
       } catch (err) {
         console.error('Error wiping data', err);
+        if (err && err.isReloadPending) return;
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) { handleFatal401(); return; }
         showSection('app');
@@ -1473,6 +1520,7 @@
         downloadJsonText(raw);
       } catch (err) {
         console.error('Error exporting', err);
+        if (err && err.isReloadPending) return;
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) { handleFatal401(); return; }
         alert('Chyba při exportu: ' + describeDriveError(err));
@@ -1520,7 +1568,14 @@
           && (Array.isArray(parsed)
               || Array.isArray(parsed.records)
               || (parsed.records && typeof parsed.records === 'object'))) {
-        incoming = Object.entries(migrate(parsed).records);
+        let migrated;
+        try {
+          migrated = migrate(parsed, { source: 'import' });
+        } catch (err) {
+          alert(err.message);
+          return;
+        }
+        incoming = Object.entries(migrated.records);
       } else if (parsed && parsed.data && Array.isArray(parsed.data.values)) {
         incoming = parsed.data.values
           .map(v => {
@@ -1573,6 +1628,7 @@
         alert(`Naimportováno ${toAdd.length} záznamů.`);
       } catch (err) {
         console.error('Error importing records', err);
+        if (err && err.isReloadPending) return;
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); } catch {}
@@ -1971,6 +2027,7 @@
       } catch (err) {
         console.error('Error deleting record', err);
         deletingKey = '';
+        if (err && err.isReloadPending) return;
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); } catch {}
@@ -2041,6 +2098,7 @@
       } catch (err) {
         console.error('Error editing record', err);
         isSavingEdit = false;
+        if (err && err.isReloadPending) return;
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}

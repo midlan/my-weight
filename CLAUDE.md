@@ -223,6 +223,29 @@ When `migrate()` reports `migrated: true` and a file already exists,
 right after the first successful render. This keeps every subsequent
 load on the fast path.
 
+### Future-version reload guard
+
+`migrate()` also defends against the *opposite* direction — JS that's
+older than the on-disk schema. If `parsed.version > SCHEMA_VERSION`
+(e.g. a stale tab or a CDN-cached bundle reading a file that a newer
+deploy already upgraded), it calls `location.reload()` once to pick
+up fresh JS. The `sessionStorage` key
+`my-weight:reloaded-for-newer-schema` guards against an infinite loop
+when the server itself is serving older code (intentional rollback,
+or a deploy gone wrong): the second time we encounter a future
+version without the loop-breaking key being clearable, we throw with
+a user-visible Czech message instead of reloading again.
+
+The error thrown to halt processing before the reload navigation
+lands carries `err.isReloadPending = true`; every Drive-call catch
+checks this flag and `return`s silently so the user doesn't see a
+"Chyba při ukládání" alert flash for a page that's about to unload.
+
+The import path passes `migrate(parsed, { source: 'import' })`,
+which disables the reload behavior — a user-initiated import of a
+newer-format file should fail with an alert, not unexpectedly
+refresh the page.
+
 ### Adding a new schema version
 
 When you need to change the shape:
