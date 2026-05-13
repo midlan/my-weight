@@ -230,12 +230,16 @@
     const CLIENT_ID = '562922982244-e4ci4pc7pj3tche4dat3ra6oam17ath8.apps.googleusercontent.com';
     const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
     const FILE_NAME = 'weight_records.json';
-    const SCHEMA_VERSION = 1;
+    const SCHEMA_VERSION = 2;
 
     let tokenClient;
     let accessToken = null;
     let gapiReady = false;
-    let records = [];
+    // v2 storage shape: object keyed by minute-precision ISO datetime.
+    // Each value is { weight, note? } — datetime lives only in the key.
+    // Iterate via recordsAsList() (defined further down) which hoists the
+    // datetime back into each record and sorts chronologically.
+    let records = {};
     let settings = {};
     let fileId = null;
     let revisionId = null;
@@ -528,7 +532,7 @@
     }
     function updateLogoFromLatest() {
       if (!LOGO_AVAILABLE) return;
-      const valid = records.filter(r =>
+      const valid = recordsAsList().filter(r =>
         r && typeof r.weight === 'number'
         && typeof r.datetime === 'string'
         && !Number.isNaN(new Date(r.datetime).getTime())
@@ -537,9 +541,9 @@
         displayLogoWeight(72.5);
         return;
       }
-      const newest = valid.reduce((m, r) =>
-        new Date(r.datetime) > new Date(m.datetime) ? r : m);
-      displayLogoWeight(newest.weight);
+      // recordsAsList() (called inside `valid`) sorts ascending —
+      // last element is the newest.
+      displayLogoWeight(valid[valid.length - 1].weight);
     }
     if (LOGO_AVAILABLE) {
       // Hand control of the SVG from the CSS default-on classes to
@@ -616,17 +620,25 @@
     const chartEmptyEl = document.getElementById('chart-empty');
     let chart = null;
 
-    let editingIndex = -1;
-    let editingDatetimeMin = '';
+    // Identifier of the record currently in edit / delete mode — the
+    // minute-precision ISO key from the v2 records object. Empty string
+    // means "no row in that mode". Used instead of array indices because
+    // v2's storage is an object; the key is stable across re-renders and
+    // conflict refetches.
+    let editingKey = '';
     let isSavingEdit = false;
-    let deletingIndex = -1;
+    let deletingKey = '';
     let nowMode = true;
     // True once the user has touched the new-record weight input (typed,
     // pasted, or used the +/- steppers). A dirty input is left alone by
     // prefillWeightInput(); the flag clears again after a successful
     // save so the field can resume tracking the latest record.
     let weightInputDirty = false;
-    const expandedNotes = new WeakSet();
+    // Set of record keys whose notes are currently expanded in the
+    // history list. Was a WeakSet keyed by the record object — moved
+    // to a Set of keys because recordsAsList() rebuilds the record
+    // objects every render, so object identity wouldn't survive.
+    const expandedNotes = new Set();
     let silentAttempt = false;
     let silentTimeoutId = null;
     // Promise state for mid-session silent re-auth (after a 401). Distinct
@@ -697,7 +709,7 @@
       // Clear in-memory data so the auth screen doesn't leak the last
       // weight via the header logo, and so onSignIn's loadRecords()
       // starts from a clean slate. Matches the explicit-logout posture.
-      records = [];
+      records = {};
       settings = {};
       fileId = null;
       revisionId = null;
@@ -802,9 +814,9 @@
         case '6m': from.setMonth(from.getMonth() - 6); break;
         case '1y': from.setFullYear(from.getFullYear() - 1); break;
         case 'all':
-          if (records.length > 0) {
-            const oldest = records.reduce((min, r) => {
-              const t = new Date(r.datetime).getTime();
+          if (recordsCount() > 0) {
+            const oldest = Object.keys(records).reduce((min, key) => {
+              const t = new Date(key).getTime();
               return t < min ? t : min;
             }, Infinity);
             from = new Date(oldest);
@@ -952,14 +964,13 @@
       clearStoredToken();
       if (gapiReady) gapi.client.setToken(null);
       accessToken = null;
-      records = [];
+      records = {};
       settings = {};
       fileId = null;
       revisionId = null;
       recordsLoaded = false;
       currentPage = 0;
-      editingIndex = -1;
-      editingDatetimeMin = '';
+      editingKey = '';
       resetToNowMode();
       showSection('auth');
       historyList.innerHTML = '';
@@ -994,7 +1005,7 @@
           alert('Data se ještě načítají, zkuste to za chvíli.');
           return;
         }
-        if (editingIndex !== -1) {
+        if (editingKey) {
           alert('Dokončete prosím úpravu záznamu.');
           return;
         }
@@ -1022,7 +1033,7 @@
           }
           datetimeIso = dt.toISOString();
         }
-        if (findDuplicateRecord(datetimeIso) !== -1) {
+        if (findDuplicateRecord(datetimeIso)) {
           alert(`Záznam s tímto datem a časem již existuje (${formatCzechDateTime(new Date(datetimeIso))}).`);
           return;
         }
@@ -1049,7 +1060,7 @@
       if (!file) {
         fileId = null;
         revisionId = null;
-        records = [];
+        records = {};
         settings = {};
         return { exists: false, migrated: false, raw: '' };
       }
@@ -1077,47 +1088,88 @@
       settings = result.settings;
     }
 
+    // Normalize whatever shape `parsed` is in into the current v2 object:
+    //   { records: { "<minute-key>": { weight, note? }, ... }, settings, migrated }
+    // Migration sources handled, in order of preference:
+    //   - v2 envelope  ({ version: 2, records: {<key>: {...}} }) — fast path, no rewrite
+    //   - v1 envelope  ({ version: 1, records: [{datetime, weight, note?}] })
+    //   - bare array   ([{datetime, weight, note?}]) — pre-versioning legacy
+    //   - per-record `{date: "YYYY-MM-DD"}` legacy → noon UTC ISO
+    // `migrated` flips true whenever the on-disk shape doesn't match v2
+    // exactly, so loadRecords() will trigger a one-shot rewrite of the file.
     function migrate(parsed) {
-      let rawRecords;
       let parsedSettings = {};
       let migrated = false;
+      const recordsOut = {};
+
+      const ingestRecord = (datetimeIso, weight, note) => {
+        const key = toMinuteKey(datetimeIso);
+        if (!key) { migrated = true; return; }
+        if (recordsOut[key]) migrated = true;  // duplicate at the same minute — last write wins
+        const value = { weight };
+        if (note) value.note = note;
+        recordsOut[key] = value;
+      };
+
+      let inputRecords;
+      let inputIsObject = false;
       if (Array.isArray(parsed)) {
-        rawRecords = parsed;
+        inputRecords = parsed;
         migrated = true;
       } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) {
-        rawRecords = parsed.records;
+        // v1 envelope (or any earlier envelope that used an array).
+        inputRecords = parsed.records;
+        if (parsed.version !== SCHEMA_VERSION) migrated = true;
+        if (parsed.settings && typeof parsed.settings === 'object' && !Array.isArray(parsed.settings)) {
+          parsedSettings = parsed.settings;
+        }
+      } else if (parsed && typeof parsed === 'object'
+                 && parsed.records && typeof parsed.records === 'object'
+                 && !Array.isArray(parsed.records)) {
+        // v2 envelope.
+        inputRecords = parsed.records;
+        inputIsObject = true;
         if (parsed.version !== SCHEMA_VERSION) migrated = true;
         if (parsed.settings && typeof parsed.settings === 'object' && !Array.isArray(parsed.settings)) {
           parsedSettings = parsed.settings;
         }
       } else {
-        rawRecords = [];
+        inputRecords = [];
         migrated = true;
       }
 
-      const normalized = [];
-      for (const r of rawRecords) {
-        if (!r || typeof r.weight !== 'number') { migrated = true; continue; }
-        const note = (typeof r.note === 'string' && r.note.length > 0) ? r.note : null;
-        if (typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime())) {
-          const rec = { datetime: r.datetime, weight: r.weight };
-          if (note) rec.note = note;
-          normalized.push(rec);
-          continue;
+      if (inputIsObject) {
+        for (const [datetimeIso, r] of Object.entries(inputRecords)) {
+          if (!r || typeof r.weight !== 'number') { migrated = true; continue; }
+          const note = (typeof r.note === 'string' && r.note.length > 0) ? r.note : null;
+          // The key itself is the canonical datetime; ingestRecord
+          // re-normalizes via toMinuteKey to guard against any drift.
+          const normalizedKey = toMinuteKey(datetimeIso);
+          if (!normalizedKey) { migrated = true; continue; }
+          if (normalizedKey !== datetimeIso) migrated = true;
+          ingestRecord(datetimeIso, r.weight, note);
         }
-        if (typeof r.date === 'string') {
-          const dt = new Date(r.date + 'T12:00:00');
-          if (!Number.isNaN(dt.getTime())) {
-            const rec = { datetime: dt.toISOString(), weight: r.weight };
-            if (note) rec.note = note;
-            normalized.push(rec);
-            migrated = true;
+      } else {
+        for (const r of inputRecords) {
+          if (!r || typeof r.weight !== 'number') { migrated = true; continue; }
+          const note = (typeof r.note === 'string' && r.note.length > 0) ? r.note : null;
+          if (typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime())) {
+            ingestRecord(r.datetime, r.weight, note);
             continue;
           }
+          if (typeof r.date === 'string') {
+            const dt = new Date(r.date + 'T12:00:00');
+            if (!Number.isNaN(dt.getTime())) {
+              ingestRecord(dt.toISOString(), r.weight, note);
+              migrated = true;
+              continue;
+            }
+          }
+          migrated = true;
         }
-        migrated = true;
       }
-      return { records: normalized, settings: parsedSettings, migrated };
+
+      return { records: recordsOut, settings: parsedSettings, migrated };
     }
 
     function buildUploadError(res, body) {
@@ -1224,7 +1276,7 @@
               // File deleted on another device; treat as starting from empty.
               fileId = null;
               revisionId = null;
-              records = [];
+              records = {};
               settings = {};
             } else {
               await fetchContentByFileId();
@@ -1270,7 +1322,7 @@
           return;
         }
         if (!recordsLoaded) {
-          records = [];
+          records = {};
           settings = {};
           recordsLoaded = true;
         }
@@ -1287,9 +1339,12 @@
     async function saveRecord(entry) {
       const originalBtnText = submitBtn.textContent;
       submitBtn.textContent = 'Ukládám...';
+      const key = toMinuteKey(entry.datetime);
       const apply = () => {
-        if (findDuplicateRecord(entry.datetime) !== -1) return false;
-        records.push(entry);
+        if (records[key]) return false;
+        const value = { weight: entry.weight };
+        if (entry.note) value.note = entry.note;
+        records[key] = value;
         return true;
       };
       apply();
@@ -1344,11 +1399,10 @@
         }
         fileId = null;
         revisionId = null;
-        records = [];
+        records = {};
         settings = {};
         currentPage = 0;
-        editingIndex = -1;
-        editingDatetimeMin = '';
+        editingKey = '';
         renderRecords();
         renderChart();
         showSection('app');
@@ -1414,7 +1468,7 @@
           }
         } else {
           // No file yet — export the local empty envelope.
-          raw = JSON.stringify({ version: SCHEMA_VERSION, records: [], settings: {} }, null, 2);
+          raw = JSON.stringify({ version: SCHEMA_VERSION, records: {}, settings: {} }, null, 2);
         }
         downloadJsonText(raw);
       } catch (err) {
@@ -1457,9 +1511,16 @@
         alert('Soubor není platný JSON.');
         return;
       }
+      // incoming becomes an array of v2 [key, value] tuples ready to
+      // merge into `records`. migrate() handles both my-weight envelopes
+      // (v1 array, v2 object, bare-array legacy); kaloricketabulky stays
+      // a flat list parsed inline.
       let incoming;
-      if (parsed && (Array.isArray(parsed) || (typeof parsed === 'object' && Array.isArray(parsed.records)))) {
-        incoming = migrate(parsed).records;
+      if (parsed && typeof parsed === 'object'
+          && (Array.isArray(parsed)
+              || Array.isArray(parsed.records)
+              || (parsed.records && typeof parsed.records === 'object'))) {
+        incoming = Object.entries(migrate(parsed).records);
       } else if (parsed && parsed.data && Array.isArray(parsed.data.values)) {
         incoming = parsed.data.values
           .map(v => {
@@ -1467,7 +1528,7 @@
             const dt = new Date(v.from);
             const w = typeof v.value === 'number' ? v.value : parseFloat(v.value);
             if (Number.isNaN(dt.getTime()) || Number.isNaN(w)) return null;
-            return { datetime: dt.toISOString(), weight: w };
+            return [toMinuteKey(dt.toISOString()), { weight: w }];
           })
           .filter(Boolean);
       } else {
@@ -1479,15 +1540,12 @@
         return;
       }
       const toAdd = [];
-      const seenMinutes = new Set(records
-        .filter(r => r && typeof r.datetime === 'string')
-        .map(r => isoToMinute(r.datetime)));
+      const seenKeys = new Set(Object.keys(records));
       let skipped = 0;
-      for (const r of incoming) {
-        const min = isoToMinute(r.datetime);
-        if (seenMinutes.has(min)) { skipped++; continue; }
-        seenMinutes.add(min);
-        toAdd.push(r);
+      for (const [key, value] of incoming) {
+        if (!key || seenKeys.has(key)) { skipped++; continue; }
+        seenKeys.add(key);
+        toAdd.push([key, value]);
       }
       if (toAdd.length === 0) {
         alert(`Všech ${incoming.length} záznamů ze souboru už existuje, nic se nepřidá.`);
@@ -1500,16 +1558,9 @@
       menuOverlay.classList.add('hidden');
       showLoading('Importuji...');
       const apply = () => {
-        const seen = new Set(records
-          .filter(r => r && typeof r.datetime === 'string')
-          .map(r => isoToMinute(r.datetime)));
-        let added = 0;
-        for (const r of toAdd) {
-          const min = isoToMinute(r.datetime);
-          if (seen.has(min)) continue;
-          seen.add(min);
-          records.push(r);
-          added++;
+        for (const [key, value] of toAdd) {
+          if (records[key]) continue; // freshly-refetched state already has it
+          records[key] = value;
         }
         return true;
       };
@@ -1542,8 +1593,8 @@
     }
 
     function readEditingRowInputs() {
-      if (editingIndex === -1) return null;
-      const li = historyList.querySelector(`li[data-idx="${editingIndex}"]`);
+      if (!editingKey) return null;
+      const li = historyList.querySelector(`li[data-key="${editingKey}"]`);
       if (!li) return null;
       const fields = li.querySelectorAll('input, textarea');
       if (fields.length < 3) return null;
@@ -1559,7 +1610,7 @@
     // minute-resolution; weight is exact equality; note is trimmed).
     function recordMatchesValues(record, datetimeIso, weight, note) {
       return !!record
-        && isoToMinute(record.datetime) === isoToMinute(datetimeIso)
+        && toMinuteKey(record.datetime) === toMinuteKey(datetimeIso)
         && record.weight === weight
         && (record.note || '') === (note || '');
     }
@@ -1567,8 +1618,9 @@
     function editingRowHasChanges() {
       const inputs = readEditingRowInputs();
       if (!inputs) return false;
-      const original = records[editingIndex];
-      if (!original) return false;
+      const value = records[editingKey];
+      if (!value) return false;
+      const original = { datetime: editingKey, ...value };
       const dt = new Date(inputs.dtValue);
       if (Number.isNaN(dt.getTime())) return true; // invalid input → treat as dirty
       const w = parseFloat(inputs.weightValue);
@@ -1577,8 +1629,8 @@
     }
 
     function restoreEditingDraft(draft) {
-      if (!draft || editingIndex === -1) return;
-      const li = historyList.querySelector(`li[data-idx="${editingIndex}"]`);
+      if (!draft || !editingKey) return;
+      const li = historyList.querySelector(`li[data-key="${editingKey}"]`);
       if (!li) return;
       const fields = li.querySelectorAll('input, textarea');
       if (fields.length >= 3) {
@@ -1613,48 +1665,58 @@
       return lines;
     }
 
-    function isoToMinute(iso) {
-      return typeof iso === 'string' ? iso.substring(0, 16) : '';
+    // Canonical key used by the v2 records object. Same datetime at
+    // different sub-minute precisions (e.g. nowMode's millisecond
+    // timestamp vs custom mode's HH:MM:00) collapses to the same key.
+    function toMinuteKey(iso) {
+      if (typeof iso !== 'string') return '';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '';
+      d.setSeconds(0, 0);
+      return d.toISOString();
     }
 
-    function findDuplicateRecord(datetimeIso, excludeIdx = -1) {
-      const targetMin = isoToMinute(datetimeIso);
-      for (let i = 0; i < records.length; i++) {
-        if (i === excludeIdx) continue;
-        const r = records[i];
-        if (r && isoToMinute(r.datetime) === targetMin) return i;
-      }
-      return -1;
+    // Materialize the records object as an array of records-with-datetime
+    // sorted ascending by datetime. Built on demand; most renderers /
+    // iterators use this so they keep the "array of records" shape they
+    // were written against.
+    function recordsAsList() {
+      return Object.entries(records)
+        .map(([datetime, r]) => ({ datetime, ...r }))
+        .sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+    }
+
+    function recordsCount() {
+      return Object.keys(records).length;
+    }
+
+    function findDuplicateRecord(datetimeIso, excludeKey = '') {
+      const key = toMinuteKey(datetimeIso);
+      if (!key) return '';
+      if (key === excludeKey) return '';
+      return records[key] ? key : '';
     }
 
     function prefillWeightInput() {
       // Dirty input == user has expressed intent; leave it alone until
       // the next successful save clears the flag.
       if (weightInputDirty) return;
-      const valid = records.filter(r => r && typeof r.weight === 'number' && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
+      const valid = recordsAsList().filter(r => r && typeof r.weight === 'number' && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
       if (valid.length === 0) {
         weightInput.value = '';
         return;
       }
-      const newest = valid.reduce((m, r) => new Date(r.datetime) > new Date(m.datetime) ? r : m);
-      weightInput.value = String(newest.weight);
+      // recordsAsList() is sorted ascending — last element is newest.
+      weightInput.value = String(valid[valid.length - 1].weight);
     }
 
     function renderRecords() {
-      // Re-resolve editingIndex from the persistent datetime fingerprint —
-      // the records array can be reshuffled by deletes / conflict refetches
-      // and editingIndex by raw position would silently point at a
-      // different record (or out of bounds).
-      if (editingIndex !== -1) {
-        if (editingDatetimeMin) {
-          editingIndex = records.findIndex(r => r && isoToMinute(r.datetime) === editingDatetimeMin);
-          if (editingIndex === -1) editingDatetimeMin = '';
-        } else {
-          editingIndex = -1;
-        }
-      }
+      // If the record we were editing got removed (deleted on another
+      // device, or by us as part of a conflict refetch) the key won't
+      // resolve anymore — drop the edit-mode state cleanly.
+      if (editingKey && !records[editingKey]) editingKey = '';
       historyList.innerHTML = '';
-      if (records.length === 0) {
+      if (recordsCount() === 0) {
         const li = document.createElement('li');
         li.className = 'p-2 text-gray-500 dark:text-gray-400';
         li.textContent = 'Žádné záznamy k zobrazení.';
@@ -1662,22 +1724,22 @@
         paginationEl.classList.add('hidden');
         return;
       }
-      const valid = records
-        .map((r, i) => ({ r, i }))
-        .filter(({ r }) => r && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()));
-      const sorted = valid.slice().sort((a, b) => new Date(b.r.datetime) - new Date(a.r.datetime));
-      const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+      // recordsAsList() returns ascending; reverse for newest-first display.
+      const valid = recordsAsList()
+        .filter(r => r && typeof r.datetime === 'string' && !Number.isNaN(new Date(r.datetime).getTime()))
+        .reverse();
+      const totalPages = Math.max(1, Math.ceil(valid.length / pageSize));
       if (currentPage >= totalPages) currentPage = totalPages - 1;
       if (currentPage < 0) currentPage = 0;
       const start = currentPage * pageSize;
-      const pageItems = sorted.slice(start, start + pageSize);
+      const pageItems = valid.slice(start, start + pageSize);
       const frag = document.createDocumentFragment();
-      pageItems.forEach(({ r, i }) => frag.appendChild(buildHistoryRow(r, i)));
+      pageItems.forEach(r => frag.appendChild(buildHistoryRow(r)));
       historyList.appendChild(frag);
 
-      if (sorted.length > ALLOWED_PAGE_SIZES[0]) {
+      if (valid.length > ALLOWED_PAGE_SIZES[0]) {
         paginationEl.classList.remove('hidden');
-        pageInfoEl.textContent = `${start + 1}–${start + pageItems.length} z ${sorted.length}`;
+        pageInfoEl.textContent = `${start + 1}–${start + pageItems.length} z ${valid.length}`;
         prevPageBtn.disabled = currentPage === 0;
         nextPageBtn.disabled = currentPage >= totalPages - 1;
       } else {
@@ -1694,11 +1756,12 @@
       return b;
     }
 
-    function buildHistoryRow(r, idx) {
+    function buildHistoryRow(r) {
       const li = document.createElement('li');
-      li.dataset.idx = String(idx);
+      const key = r.datetime;
+      li.dataset.key = key;
 
-      if (idx === editingIndex) {
+      if (key === editingKey) {
         li.className = 'p-2 bg-gray-50 dark:bg-gray-800 rounded flex flex-col gap-2';
 
         const dtInput = document.createElement('input');
@@ -1747,10 +1810,10 @@
           actions.textContent = 'Ukládám...';
         } else {
           const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950');
-          saveBtn.addEventListener('click', () => saveEdit(idx, dtInput.value, wInput.value, editNoteInput.value));
+          saveBtn.addEventListener('click', () => saveEdit(key, dtInput.value, wInput.value, editNoteInput.value));
 
           const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700');
-          cancelBtn.addEventListener('click', () => { editingIndex = -1; editingDatetimeMin = ''; renderRecords(); });
+          cancelBtn.addEventListener('click', () => { editingKey = ''; renderRecords(); });
 
           wDecrement.addEventListener('click', () => adjustWeight(wInput, -0.1));
           wIncrement.addEventListener('click', () => adjustWeight(wInput, 0.1));
@@ -1775,7 +1838,7 @@
         topRow.append(dtInput, wStepper, actions);
         li.append(topRow, editNoteInput);
       } else {
-        const isExpanded = !!r.note && expandedNotes.has(r);
+        const isExpanded = !!r.note && expandedNotes.has(key);
 
         const dateSpan = document.createElement('span');
         dateSpan.textContent = formatCzechDateTime(new Date(r.datetime));
@@ -1787,7 +1850,7 @@
         const actions = document.createElement('div');
         actions.className = 'flex gap-1 shrink-0 -my-1.5 -mr-2';
 
-        if (idx === deletingIndex) {
+        if (key === deletingKey) {
           const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 dark:text-gray-300');
           editBtn.disabled = true;
           editBtn.classList.add('opacity-50');
@@ -1800,27 +1863,26 @@
           spinnerBtn.innerHTML = '<div class="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-red-600 dark:border-t-red-400 rounded-full animate-spin"></div>';
 
           actions.append(editBtn, spinnerBtn);
-        } else if (deletingIndex === -1) {
+        } else if (!deletingKey) {
           const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950 hover:text-blue-600 dark:hover:text-blue-300');
           editBtn.addEventListener('click', () => {
-            if (editingIndex !== -1 && editingIndex !== idx) {
+            if (editingKey && editingKey !== key) {
               if (editingRowHasChanges()) {
-                const orig = records[editingIndex];
-                const label = orig && orig.datetime
-                  ? `${formatCzechDateTime(new Date(orig.datetime))} (${formatWeight(orig.weight)} kg)`
+                const origValue = records[editingKey];
+                const label = origValue
+                  ? `${formatCzechDateTime(new Date(editingKey))} (${formatWeight(origValue.weight)} kg)`
                   : '';
                 alert('Nejprve uložte nebo zrušte úpravy záznamu' + (label ? ': ' + label : '') + '.');
                 return;
               }
               // No changes — silently abandon current edit and switch.
             }
-            editingIndex = idx;
-            editingDatetimeMin = isoToMinute(r.datetime);
+            editingKey = key;
             renderRecords();
           });
 
           const delBtn = iconButton(ICON_TRASH, 'Smazat', 'text-gray-500 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-300');
-          delBtn.addEventListener('click', () => deleteRecord(idx));
+          delBtn.addEventListener('click', () => deleteRecord(key));
 
           actions.append(editBtn, delBtn);
         }
@@ -1834,8 +1896,8 @@
 
         const onToggle = () => {
           if (window.getSelection()?.toString()) return;
-          if (expandedNotes.has(r)) expandedNotes.delete(r);
-          else expandedNotes.add(r);
+          if (expandedNotes.has(key)) expandedNotes.delete(key);
+          else expandedNotes.add(key);
           renderRecords();
         };
 
@@ -1878,25 +1940,23 @@
       return li;
     }
 
-    async function deleteRecord(idx) {
-      if (idx < 0 || idx >= records.length) return;
-      const r = records[idx];
-      if (!r) return;
-      const label = r.datetime && !Number.isNaN(new Date(r.datetime).getTime())
-        ? `${formatCzechDateTime(new Date(r.datetime))} (${formatWeight(r.weight)} kg)`
-        : `záznam ${idx}`;
+    async function deleteRecord(key) {
+      const value = records[key];
+      if (!value) return;
+      const dt = new Date(key);
+      const label = !Number.isNaN(dt.getTime())
+        ? `${formatCzechDateTime(dt)} (${formatWeight(value.weight)} kg)`
+        : `záznam`;
       if (!confirm(`Smazat ${label}?`)) return;
       // Snapshot the typed values from another row's edit mode so the
       // delete-induced re-render doesn't wipe the user's in-progress
       // edit. They get restored after each renderRecords() below.
-      const editingDraft = (editingIndex !== -1 && editingIndex !== idx) ? readEditingRowInputs() : null;
-      const targetMin = isoToMinute(r.datetime);
+      const editingDraft = (editingKey && editingKey !== key) ? readEditingRowInputs() : null;
       const apply = () => {
-        const i = records.findIndex(x => x && isoToMinute(x.datetime) === targetMin);
-        if (i !== -1) records.splice(i, 1);
+        delete records[key];
         return true; // idempotent — already-gone is also success
       };
-      deletingIndex = idx;
+      deletingKey = key;
       submitBtn.disabled = true;
       wipeBtn.disabled = true;
       renderRecords();
@@ -1904,13 +1964,13 @@
       apply();
       try {
         await uploadWithConflictRetry(apply);
-        deletingIndex = -1;
+        deletingKey = '';
         renderRecords();
         restoreEditingDraft(editingDraft);
         renderChart();
       } catch (err) {
         console.error('Error deleting record', err);
-        deletingIndex = -1;
+        deletingKey = '';
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); } catch {}
@@ -1924,8 +1984,8 @@
       }
     }
 
-    async function saveEdit(idx, dtValue, weightValue, noteValue) {
-      if (idx < 0 || idx >= records.length) return;
+    async function saveEdit(key, dtValue, weightValue, noteValue) {
+      if (!records[key]) return;
       if (!dtValue) { alert('Vyplňte datum/čas.'); return; }
       const dt = new Date(dtValue);
       if (Number.isNaN(dt.getTime())) { alert('Neplatné datum/čas.'); return; }
@@ -1933,33 +1993,34 @@
       if (Number.isNaN(w)) { alert('Neplatná hmotnost.'); return; }
       const datetimeIso = dt.toISOString();
       const note = (noteValue || '').trim();
-      const original = records[idx];
+      const originalValue = records[key];
+      const original = { datetime: key, ...originalValue };
       // No-op save — typed values match the original record. Skip the
       // upload entirely and silently leave edit mode.
       if (recordMatchesValues(original, datetimeIso, w, note)) {
-        editingIndex = -1;
-        editingDatetimeMin = '';
+        editingKey = '';
         renderRecords();
         return;
       }
-      if (findDuplicateRecord(datetimeIso, idx) !== -1) {
+      if (findDuplicateRecord(datetimeIso, key)) {
         alert(`Záznam s tímto datem a časem již existuje (${formatCzechDateTime(new Date(datetimeIso))}).`);
         return;
       }
-      const updated = { datetime: datetimeIso, weight: w };
-      if (note) updated.note = note;
-      const oldMin = isoToMinute(original.datetime);
+      const newKey = toMinuteKey(datetimeIso);
+      const updatedValue = { weight: w };
+      if (note) updatedValue.note = note;
       const apply = () => {
-        const i = records.findIndex(x => x && isoToMinute(x.datetime) === oldMin);
-        if (i === -1) return false; // original deleted on another device
+        if (!records[key]) return false; // original deleted on another device
         // Block if the new datetime is now taken by some other record
-        if (findDuplicateRecord(datetimeIso, i) !== -1) return false;
-        records[i] = updated;
-        editingDatetimeMin = isoToMinute(updated.datetime);
+        if (findDuplicateRecord(datetimeIso, key)) return false;
+        if (newKey !== key) delete records[key];
+        records[newKey] = updatedValue;
+        editingKey = newKey;
         return true;
       };
-      records[idx] = updated;
-      editingDatetimeMin = isoToMinute(updated.datetime);
+      if (newKey !== key) delete records[key];
+      records[newKey] = updatedValue;
+      editingKey = newKey;
       isSavingEdit = true;
       renderRecords();
       submitBtn.disabled = true;
@@ -1968,15 +2029,13 @@
         const { success } = await uploadWithConflictRetry(apply);
         isSavingEdit = false;
         if (!success) {
-          editingIndex = -1;
-          editingDatetimeMin = '';
+          editingKey = '';
           renderRecords();
           renderChart();
           alert('Záznam byl mezitím změněn z jiného zařízení; změna nebyla uložena.');
           return;
         }
-        editingIndex = -1;
-        editingDatetimeMin = '';
+        editingKey = '';
         renderRecords();
         renderChart();
       } catch (err) {
@@ -1985,7 +2044,7 @@
         const status = err?.status || err?.result?.error?.code;
         if (status === 401) { handleFatal401(); return; }
         try { await fetchFromDrive(); renderRecords(); renderChart(); } catch {}
-        const failedLi = historyList.querySelector(`li[data-idx="${idx}"]`);
+        const failedLi = historyList.querySelector(`li[data-key="${editingKey}"]`);
         if (failedLi) {
           const fields = failedLi.querySelectorAll('input, textarea');
           if (fields.length >= 3) {
@@ -2066,11 +2125,13 @@
       const fromTs = fromVal ? new Date(fromVal + 'T00:00:00').getTime() : -Infinity;
       const toTs = toVal ? new Date(toVal + 'T23:59:59.999').getTime() : Infinity;
 
-      const allPoints = records
+      // recordsAsList() already returns ascending — sort kept defensively
+      // in case a bad datetime ever slipped past validation.
+      const allPoints = recordsAsList()
         .map(r => ({
-          x: r && typeof r.datetime === 'string' ? new Date(r.datetime).getTime() : NaN,
-          y: r ? r.weight : NaN,
-          note: r && typeof r.note === 'string' ? r.note : ''
+          x: typeof r.datetime === 'string' ? new Date(r.datetime).getTime() : NaN,
+          y: r.weight,
+          note: typeof r.note === 'string' ? r.note : ''
         }))
         .filter(p => !Number.isNaN(p.x) && !Number.isNaN(p.y))
         .sort((a, b) => a.x - b.x);

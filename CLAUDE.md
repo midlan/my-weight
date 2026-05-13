@@ -136,29 +136,34 @@ another origin, update the CSP `<meta>`.
 
 This is the part most likely to bite a future change, so read carefully.
 
-### Current schema (version 1)
+### Current schema (version 2)
 
 ```json
 {
-  "version": 1,
-  "records": [
-    { "datetime": "2026-05-02T07:14:00.000Z", "weight": 72.5 },
-    { "datetime": "2026-05-03T07:31:00.000Z", "weight": 72.3, "note": "po běhu" }
-  ],
+  "version": 2,
+  "records": {
+    "2026-05-02T07:14:00.000Z": { "weight": 72.5 },
+    "2026-05-03T07:31:00.000Z": { "weight": 72.3, "note": "po běhu" }
+  },
   "settings": {
     "rangePreset": "30d"
   }
 }
 ```
 
-- `datetime` is **always UTC ISO 8601** (`new Date(...).toISOString()`).
-  The `datetime-local` input value is converted to UTC at save time;
-  display is converted back via `Intl.DateTimeFormat` at render time.
+- `records` is an **object keyed by the record's UTC datetime** —
+  always a minute-precision ISO 8601 string
+  (`YYYY-MM-DDTHH:MM:00.000Z`). The key is the *only* place the
+  datetime lives in the data; the value object never repeats it.
+  Storing the datetime as the key gives a structural uniqueness
+  guarantee: two records *cannot* share a minute, even if a future
+  bug forgets the app-layer duplicate check.
+- The `datetime-local` input value is converted to UTC at save time
+  and rounded to minute precision via `toMinuteKey()`; display is
+  converted back via `Intl.DateTimeFormat` at render time.
 - `weight` is a number in kilograms.
 - `note` is an **optional** non-empty string. Records without a note
-  omit the key entirely (no empty string), so old records and new
-  records-without-notes are byte-identical to the previous schema —
-  no version bump or rewrite needed when the field was introduced.
+  omit the key entirely (no empty string).
 - `settings` is an **optional** object holding cross-device app
   preferences (chart range preset, etc.). Adding new keys here is a
   forward-compatible change; readers ignore unknown keys, missing
@@ -170,33 +175,51 @@ This is the part most likely to bite a future change, so read carefully.
     different system preference doesn't inherit a stale override.
   Saves are debounced (500 ms) on the device that changed the value
   and ride along with the regular records upload.
-- Datetime is the unique key (matched at minute precision); a record's
-  weight or note can change but two records can't share a minute.
 - The schema version constant is `SCHEMA_VERSION` near the top of the
   inline `<script>`.
 
+### In-memory shape vs. iteration
+
+The in-memory `records` variable is exactly the v2 object — code
+operates on it directly (`records[key]`, `delete records[key]`,
+etc.). For anything that needs sorted iteration (chart render,
+history list, finding the newest record, etc.), a `recordsAsList()`
+helper materializes the object into an array of records with the
+datetime hoisted back into each entry, sorted ascending. The output
+is transient (rebuilt every call), so don't rely on object identity
+across renders — `expandedNotes` is therefore a `Set` of keys, not a
+WeakSet of record objects.
+
+Edit/delete UI state tracks records by key, not by array index:
+`editingKey` and `deletingKey` (empty string == no row). Row DOM
+nodes carry `data-key` so query selectors can locate them after
+re-renders.
+
 ### Legacy shapes the app accepts on load
 
-The `migrate(parsed)` function in `index.html` handles three cases:
+The `migrate(parsed)` function in `index.html` handles four cases:
 
-1. **Bare array** (pre-versioning): `[{...}, {...}]` — wrapped in the
-   v1 envelope.
-2. **Versioned envelope with a different `version` field** — currently
-   only v1 exists, so anything else triggers a rewrite. Add real
-   migration logic when v2 ships.
-3. **Per-record legacy `{date: "YYYY-MM-DD", weight}`** — converted to
-   `{datetime, weight}` by treating the date as local **noon**
+1. **v2 envelope** (`{version: 2, records: {<key>: {...}}, ...}`) —
+   fast path, no rewrite.
+2. **v1 envelope** (`{version: 1, records: [{datetime, weight, note?}]}`)
+   — array converted to object; `migrated = true` triggers rewrite.
+3. **Bare array** (pre-versioning): `[{...}, {...}]` — same conversion
+   as v1, `migrated = true`.
+4. **Per-record legacy `{date: "YYYY-MM-DD", weight}`** — converted to
+   minute-precision keyed records by treating the date as local **noon**
    (`new Date(date + "T12:00:00").toISOString()`). Noon was chosen so
    that timezone shifts can't push the moment onto an adjacent day.
 
-Records that have neither a valid `datetime` nor a valid `date` are
-**dropped** during migration, and dropping anything sets the
-`migrated` flag.
+Records that have neither a valid `datetime` (or key) nor a valid
+`date` are **dropped** during migration, and dropping anything sets
+the `migrated` flag. When a v1/v0/legacy record's normalized key
+collides with another (e.g. two same-minute entries that v1 somehow
+let through), the last write wins and `migrated` is set.
 
 ### Rewrite-on-migration
 
 When `migrate()` reports `migrated: true` and a file already exists,
-`loadRecords()` rewrites the file once with the canonical v1 envelope
+`loadRecords()` rewrites the file once with the canonical v2 envelope
 right after the first successful render. This keeps every subsequent
 load on the fast path.
 
@@ -204,14 +227,12 @@ load on the fast path.
 
 When you need to change the shape:
 
-1. Bump `SCHEMA_VERSION` to `2`.
-2. In `migrate()`, branch on `parsed.version`:
-   - `1` → run a v1→v2 transform on `parsed.records`, set
-     `migrated = true`.
-   - `2` → use as-is.
-3. Keep the v0 (bare-array) and per-record `{date, weight}` branches
-   intact — old files in the wild may still be on disk.
-4. The rewrite-on-load path will upgrade users transparently the first
+1. Bump `SCHEMA_VERSION` to `3`.
+2. In `migrate()`, add a branch that recognizes v3 input as-is and
+   v2 input as needing conversion. Keep the v1, v0 (bare-array), and
+   per-record `{date, weight}` branches intact — old files in the
+   wild may still be on disk.
+3. The rewrite-on-load path will upgrade users transparently the first
    time they sign in after the change.
 
 ### Defensive rendering
