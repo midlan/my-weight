@@ -160,8 +160,8 @@ jobs:
             echo "::error::SVG inliner left an <img data-inline-svg> tag behind"
             exit 1
           fi
-          grep -q '<svg id="logo"' <<< "$html" \
-            || { echo "::error::Inlined <svg id=\"logo\"> not found in deployed HTML"; exit 1; }
+          grep -qE '<svg[^>]+id="logo"' <<< "$html" \
+            || { echo "::error::Inlined <svg ... id=\"logo\"> not found in deployed HTML"; exit 1; }
 
           for asset in tailwind.css icon.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
             echo "  - $asset"
