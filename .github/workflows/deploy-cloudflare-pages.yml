@@ -122,8 +122,50 @@ jobs:
           ' index.html
 
       - name: Deploy to Cloudflare Pages
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy public --project-name=my-weight --branch=${{ github.ref_name }}
+
+      # Pull the deployed HTML back over the wire and assert that the
+      # build-time transformations actually took effect: build-info
+      # placeholders replaced with real values, SVG inlined (no
+      # leftover <img data-inline-svg>, inlined <svg id="logo">
+      # present), and every referenced static asset responds 200.
+      # Uses the deployment-specific URL from the wrangler action so
+      # custom-domain DNS / cache propagation doesn't introduce flake.
+      - name: Post-deploy smoke test
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          echo "Smoke-testing $URL"
+          html=$(curl -fsSL "$URL/")
+
+          grep -q '<title>Moje váha</title>' <<< "$html" \
+            || { echo "::error::Missing or wrong <title> in deployed HTML"; exit 1; }
+
+          if grep -qE '__BUILD_SHA__|__BUILD_DATE__' <<< "$html"; then
+            echo "::error::Build-metadata placeholders survived in deployed HTML"
+            grep -nE '__BUILD_SHA__|__BUILD_DATE__' <<< "$html" || true
+            exit 1
+          fi
+          grep -qE "sha: '[a-f0-9]{7,}'" <<< "$html" \
+            || { echo "::error::Build SHA not replaced with a hex value"; exit 1; }
+          grep -qE "date: '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z'" <<< "$html" \
+            || { echo "::error::Build date not replaced with an ISO timestamp"; exit 1; }
+
+          if grep -qE '<img[[:space:]]+[^>]*data-inline-svg' <<< "$html"; then
+            echo "::error::SVG inliner left an <img data-inline-svg> tag behind"
+            exit 1
+          fi
+          grep -q '<svg id="logo"' <<< "$html" \
+            || { echo "::error::Inlined <svg id=\"logo\"> not found in deployed HTML"; exit 1; }
+
+          for asset in tailwind.css icon.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
+            echo "  - $asset"
+            curl -fsSL -o /dev/null "$URL/$asset" \
+              || { echo "::error::Asset $asset failed to load"; exit 1; }
+          done
+          echo "Smoke test passed"
