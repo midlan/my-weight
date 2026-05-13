@@ -12,6 +12,11 @@ export default defineConfig({
   // need them — the functions under test are pure and synchronous.
   use: {
     headless: true,
+    // The app uses Intl with undefined locale (= browser locale). Pin
+    // the test browser to cs-CZ so locale-driven formatting (datetime
+    // strings, number separators) is deterministic — matches the
+    // app's primary audience.
+    locale: 'cs-CZ',
   },
   reporter: process.env.CI ? [['list'], ['github']] : 'list',
   // Single chromium project is enough; webkit / firefox add cost without

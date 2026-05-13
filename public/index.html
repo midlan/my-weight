@@ -1088,7 +1088,7 @@
           datetimeIso = dt.toISOString();
         }
         if (findDuplicateRecord(datetimeIso)) {
-          alert(`Záznam s tímto datem a časem již existuje (${formatCzechDateTime(new Date(datetimeIso))}).`);
+          alert(`Záznam s tímto datem a časem již existuje (${formatDateTime(new Date(datetimeIso))}).`);
           return;
         }
         const note = noteInput.value.trim();
@@ -1490,7 +1490,7 @@
         if (!success) {
           renderRecords();
           renderChart();
-          alert(`Záznam s tímto datem a časem byl mezitím přidán z jiného zařízení; nebyl uložen (${formatCzechDateTime(new Date(entry.datetime))}).`);
+          alert(`Záznam s tímto datem a časem byl mezitím přidán z jiného zařízení; nebyl uložen (${formatDateTime(new Date(entry.datetime))}).`);
           return;
         }
         currentPage = 0;
@@ -1732,9 +1732,20 @@
       }
     });
 
-    function formatCzechDateTime(d) {
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()} ${d.getHours()}:${mm}`;
+    // Single Intl.DateTimeFormat instance reused for every render.
+    // `undefined` locale means "use the browser's locale" — consistent
+    // with the chart's tick / tooltip formatters. The output shape
+    // (e.g. "13. 5. 2026 7:30" in cs-CZ vs "5/13/2026, 7:30 AM" in
+    // en-US) follows whatever the user's locale dictates.
+    const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    function formatDateTime(d) {
+      return dateTimeFormatter.format(d);
     }
 
     function formatWeight(w) {
@@ -1990,7 +2001,7 @@
         const isExpanded = !!r.note && expandedNotes.has(key);
 
         const dateSpan = document.createElement('span');
-        dateSpan.textContent = formatCzechDateTime(new Date(r.datetime));
+        dateSpan.textContent = formatDateTime(new Date(r.datetime));
 
         const weightSpan = document.createElement('span');
         weightSpan.className = 'tabular-nums font-medium text-right min-w-[5rem] shrink-0';
@@ -2019,7 +2030,7 @@
               if (editingRowHasChanges()) {
                 const origValue = records[editingKey];
                 const label = origValue
-                  ? `${formatCzechDateTime(new Date(editingKey))} (${formatWeight(origValue.weight)} kg)`
+                  ? `${formatDateTime(new Date(editingKey))} (${formatWeight(origValue.weight)} kg)`
                   : '';
                 alert('Nejprve uložte nebo zrušte úpravy záznamu' + (label ? ': ' + label : '') + '.');
                 return;
@@ -2094,7 +2105,7 @@
       if (!value) return;
       const dt = new Date(key);
       const label = !Number.isNaN(dt.getTime())
-        ? `${formatCzechDateTime(dt)} (${formatWeight(value.weight)} kg)`
+        ? `${formatDateTime(dt)} (${formatWeight(value.weight)} kg)`
         : `záznam`;
       if (!confirm(`Smazat ${label}?`)) return;
       // Snapshot the typed values from another row's edit mode so the
@@ -2153,7 +2164,7 @@
         return;
       }
       if (findDuplicateRecord(datetimeIso, key)) {
-        alert(`Záznam s tímto datem a časem již existuje (${formatCzechDateTime(new Date(datetimeIso))}).`);
+        alert(`Záznam s tímto datem a časem již existuje (${formatDateTime(new Date(datetimeIso))}).`);
         return;
       }
       const newKey = toMinuteKey(datetimeIso);
