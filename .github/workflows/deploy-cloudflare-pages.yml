@@ -90,10 +90,12 @@ jobs:
       # deploy command at it.
 
       # Every raster derived from public/icon.svg is generated here:
-      # the legacy /favicon.ico, the PWA manifest icons (192 / 512),
-      # and the iOS apple-touch-icon (180). Cache key is the hash of
-      # icon.svg, so the regen only runs when the source SVG actually
-      # changes. All four files are gitignored build artifacts.
+      # the legacy /favicon.ico, the PWA manifest icons (192 / 512 /
+      # 1024), a maskable variant (1024 with the icon at 80% inside
+      # an opaque-green safe zone), and the iOS apple-touch-icon
+      # (180). Cache key is the hash of icon.svg, so the regen only
+      # runs when the source SVG actually changes. All generated
+      # files are gitignored build artifacts.
       - name: Cache generated icon files
         id: icons-cache
         uses: actions/cache@v4
@@ -102,6 +104,8 @@ jobs:
             public/favicon.ico
             public/icon-192.png
             public/icon-512.png
+            public/icon-1024.png
+            public/icon-maskable.png
             public/apple-touch-icon.png
           key: icons-${{ hashFiles('public/icon.svg') }}
 
@@ -111,9 +115,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends librsvg2-bin
           pip install --quiet Pillow
+          rsvg-convert -w 1024 -h 1024 public/icon.svg -o public/icon-1024.png
           rsvg-convert -w 512 -h 512 public/icon.svg -o public/icon-512.png
           rsvg-convert -w 192 -h 192 public/icon.svg -o public/icon-192.png
           rsvg-convert -w 180 -h 180 public/icon.svg -o public/apple-touch-icon.png
+          # Maskable variant: render the SVG at 819px (80% of 1024 —
+          # the published maskable safe-zone diameter) and paste it
+          # centered onto an opaque #1DB954 1024×1024 canvas. The OS
+          # applies its own mask shape on top; with the bleed area
+          # filled in brand green, every shape (circle / squircle /
+          # rounded square) looks like a complete icon instead of
+          # leaving cropped transparent gaps.
+          rsvg-convert -w 819 -h 819 public/icon.svg -o /tmp/icon-maskable-inner.png
+          python3 - <<'PY'
+          from PIL import Image
+          inner = Image.open('/tmp/icon-maskable-inner.png').convert('RGBA')
+          canvas = Image.new('RGB', (1024, 1024), (29, 185, 84))
+          offset = ((1024 - inner.width) // 2, (1024 - inner.height) // 2)
+          canvas.paste(inner, offset, inner)
+          canvas.save('public/icon-maskable.png')
+          PY
           python3 -c "from PIL import Image; Image.open('public/icon-512.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
 
       # Compile Tailwind utilities used in public/*.html into a single
@@ -201,7 +222,7 @@ jobs:
           grep -qE '<svg[^>]+id="logo"' <<< "$html" \
             || { echo "::error::Inlined <svg ... id=\"logo\"> not found in deployed HTML"; exit 1; }
 
-          for asset in tailwind.css icon.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
+          for asset in tailwind.css icon.svg favicon.ico icon-192.png icon-512.png icon-1024.png icon-maskable.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
             echo "  - $asset"
             curl -fsSL -o /dev/null "$URL/$asset" \
               || { echo "::error::Asset $asset failed to load"; exit 1; }

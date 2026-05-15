@@ -2,6 +2,8 @@
 public/favicon.ico
 public/icon-192.png
 public/icon-512.png
+public/icon-1024.png
+public/icon-maskable.png
 public/apple-touch-icon.png
 
 # Generated from src/tailwind.css at deploy time by the CI workflow.

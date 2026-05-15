@@ -66,11 +66,18 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   every push to `main`. Requires repo secrets
   `CLOUDFLARE_API_TOKEN` (with Pages › Edit) and
   `CLOUDFLARE_ACCOUNT_ID`. Also generates the icon raster set
-  (`favicon.ico`, `icon-192.png`, `icon-512.png`,
-  `apple-touch-icon.png`) from `public/icon.svg` before deploy;
-  the step is cached on the hash of `icon.svg`, so it only
-  re-runs when the SVG source changes. All four generated files
-  are gitignored.
+  (`favicon.ico`, `icon-192.png`, `icon-512.png`, `icon-1024.png`,
+  `icon-maskable.png`, `apple-touch-icon.png`) from
+  `public/icon.svg` before deploy; the step is cached on the hash
+  of `icon.svg`, so it only re-runs when the SVG source changes.
+  All generated files are gitignored. `icon-1024.png` feeds
+  Android's PWA splash screen (a 512 source was visibly upscaled
+  on high-DPI screens). `icon-maskable.png` is the same icon
+  rendered at 80% of a 1024 canvas and centered on an opaque
+  #1DB954 fill — that 80% scale matches the published maskable
+  safe-zone diameter so the LCD display survives every launcher
+  mask shape (circle / squircle / rounded square), and the opaque
+  green bleed means no transparent gaps when the OS crops corners.
 - `tests/` — automated test infra (npm-scoped to this dir so the
   rest of the project stays toolchain-free). Every spec navigates
   to `public/.test-built.html` (gitignored) — a pre-inlined copy
