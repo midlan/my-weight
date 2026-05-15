@@ -16,6 +16,9 @@ import { test, expect, PAGE_URL } from './fixtures.js';
 //   __mock.forceNextDeleteError — one-shot for drive.files.delete
 //                                  same shape; lets wipe-error tests
 //                                  exercise the gapi-throw path
+//   __mock.forceNextFetchDelay  — milliseconds; pauses the next
+//                                  upload fetch so tests can observe
+//                                  transient UI ("Ukládám…", spinner)
 const MOCK_INIT = `
 (() => {
   window.__mock = {
@@ -27,6 +30,11 @@ const MOCK_INIT = `
     forceNextGetError: null,
     forceNextFetchError: null,
     forceNextDeleteError: null,
+    // Milliseconds to artificially delay the next upload fetch
+    // (PATCH/POST). Lets tests observe transient UI states like
+    // "Ukládám..." or the delete spinner that would otherwise
+    // disappear in microseconds.
+    forceNextFetchDelay: 0,
     calls: [],
     addFile(name, body) {
       const id = 'file' + (this.nextFileId++);
@@ -158,6 +166,11 @@ const MOCK_INIT = `
     const url = typeof input === 'string' ? input : input.url;
     if (url.indexOf('upload/drive/v3/files') >= 0) {
       window.__mock.calls.push({ type: 'upload.fetch', method: init.method });
+      if (window.__mock.forceNextFetchDelay) {
+        const delay = window.__mock.forceNextFetchDelay;
+        window.__mock.forceNextFetchDelay = 0;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
       if (window.__mock.forceNextFetchError) {
         const f = window.__mock.forceNextFetchError;
         window.__mock.forceNextFetchError = null;
@@ -1313,6 +1326,75 @@ test('import upload 500 → "Chyba při importu" alert, no records added in memo
   // in-memory state ends up at 0 — the imported record didn't stick.
   const count = await page.evaluate(() => recordsCount());
   expect(count).toBe(0);
+});
+
+test('saveRecord shows "Ukládám..." in the submit button while upload is in flight', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Pause the upload so the transient state has a window to be
+  // observable. 500 ms is comfortably above Playwright's polling
+  // interval and below the test's default 5 s expect timeout.
+  await page.evaluate(() => { __mock.forceNextFetchDelay = 500; });
+
+  const submit = page.locator('#weight-form button[type=submit]');
+  const originalText = (await submit.textContent()).trim();
+
+  await page.locator('#weight').fill('72.5');
+  await submit.click();
+
+  await expect(submit).toContainText('Ukládám');
+
+  // Once the upload completes the button text is restored.
+  await expect(submit).toHaveText(originalText);
+});
+
+test('saveEdit shows "Ukládám..." in the edit row while upload is in flight', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  const row = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  await row.locator('button[title="Upravit"]').click();
+  await row.locator('input[type="number"]').fill('73.0');
+
+  await page.evaluate(() => { __mock.forceNextFetchDelay = 500; });
+  await row.locator('button[title="Uložit"]').click();
+
+  // The action area swaps the save / cancel buttons for an
+  // "Ukládám..." span while the upload runs.
+  await expect(row.getByText('Ukládám...')).toBeVisible();
+
+  // Eventually the row returns to view mode (no inputs).
+  await expect(row.locator('input')).toHaveCount(0);
+});
+
+test('deleteRecord shows a spinner in the trash slot while upload is in flight', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.accept());
+
+  await page.evaluate(() => { __mock.forceNextFetchDelay = 500; });
+  const row = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  await row.locator('button[title="Smazat"]').click();
+
+  // The trash icon is replaced with a spinner button titled "Mažu...".
+  await expect(row.locator('button[title="Mažu..."]')).toBeVisible();
+
+  // After the upload, the row is gone.
+  await expect(page.locator('li[data-key="2026-05-13T07:00:00.000Z"]')).toHaveCount(0);
 });
 
 test('logout clears state and shows auth section', async ({ page }) => {
