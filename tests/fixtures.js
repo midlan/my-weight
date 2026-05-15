@@ -40,12 +40,17 @@ export const PAGE_URL = pathToFileURL(BUILT_HTML).href;
 // and feed it into monocart's global coverage report after. Runs in
 // both modes — the CI deploy workflow uploads the generated HTML as
 // an artifact so anyone can browse coverage without a local dev env.
+// page.coverage is chromium-only, so webkit / firefox project runs
+// just skip coverage collection and pass through.
 export const test = base.extend({
-  page: async ({ page }, use, testInfo) => {
-    await page.coverage.startJSCoverage({ resetOnNavigation: false });
+  page: async ({ page, browserName }, use, testInfo) => {
+    const canCover = browserName === 'chromium';
+    if (canCover) await page.coverage.startJSCoverage({ resetOnNavigation: false });
     await use(page);
-    const coverage = await page.coverage.stopJSCoverage();
-    await addCoverageReport(coverage, testInfo);
+    if (canCover) {
+      const coverage = await page.coverage.stopJSCoverage();
+      await addCoverageReport(coverage, testInfo);
+    }
   },
 });
 

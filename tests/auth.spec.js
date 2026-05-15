@@ -226,8 +226,20 @@ test('initial load produces no JS errors (resource-fetch failures from blocked C
   // Resource-load failures are expected — we block external scripts
   // and the source tree doesn't have tailwind.css. Real JS errors
   // (ReferenceError, TypeError, etc.) come through with different
-  // shapes and the "Failed to load resource" filter lets them through.
-  const isResourceLoad = (text) => /^Failed to load resource:/.test(text);
+  // shapes and these filters let them through.
+  // Each browser uses different wording for the same underlying
+  // "couldn't fetch this URL" event:
+  //   - chromium: "Failed to load resource: ..."
+  //   - webkit:   "Not allowed to load local resource: file:///..."
+  //               "Origin null is not allowed by Access-Control-Allow-Origin..."
+  //   - firefox:  "NetworkError when attempting to fetch resource"
+  //               "Cross-Origin Request Blocked: ..."
+  const isResourceLoad = (text) =>
+    /^Failed to load resource:/.test(text)
+    || /^Not allowed to load local resource:/.test(text)
+    || /Access-Control-Allow-Origin/.test(text)
+    || /NetworkError when attempting to fetch/.test(text)
+    || /Cross-Origin Request Blocked/.test(text);
   page.on('console', m => {
     if (m.type() === 'error' && !isResourceLoad(m.text())) errors.push(m.text());
   });

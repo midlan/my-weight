@@ -57,18 +57,19 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('tests/package-lock.json') }}
 
-      - name: Install test dependencies + browser
+      - name: Install test dependencies + browsers
         working-directory: tests
         run: |
           npm ci
           # Idempotent: system apt deps run every time (cheap if already
           # installed); binary install is a no-op when the cache restored
-          # the browser already.
-          npx playwright install --with-deps chromium
+          # the browsers already. Cross-browser runs catch iOS-Safari
+          # (webkit) and Firefox quirks that chromium alone would miss.
+          npx playwright install --with-deps chromium webkit firefox
 
-      - name: Run pure-function tests
+      - name: Run pure-function tests (chromium + webkit + firefox)
         working-directory: tests
-        run: npx playwright test --project=unit
+        run: npx playwright test --project=unit-chromium --project=unit-webkit --project=unit-firefox
 
       # Coverage HTML is uploaded so users without a local dev env
       # can browse the per-file line/branch report straight from the
@@ -216,8 +217,8 @@ jobs:
       # Catches deploy regressions the mocked unit suite can't:
       # CSP changes blocking inline scripts, CDN moves, GIS/gapi API
       # surface changes, Tailwind class regressions, etc.
-      - name: Post-deploy boot check (Playwright)
+      - name: Post-deploy boot check (Playwright, all browsers)
         working-directory: tests
         env:
           SMOKE_URL: ${{ steps.deploy.outputs.deployment-url }}
-        run: npx playwright test --project=smoke
+        run: npx playwright test --project=smoke-chromium --project=smoke-webkit --project=smoke-firefox

@@ -40,25 +40,31 @@ export default defineConfig({
       },
     }],
   ],
-  // Two projects:
-  //   - `unit` runs the mocked Drive / GIS suite against the local
-  //     pre-inlined .test-built.html (everything except smoke.spec.js).
-  //   - `smoke` runs only smoke.spec.js, which hits a live deployed
-  //     URL from `SMOKE_URL` and is invoked by the deploy workflow
-  //     after a successful deploy.
-  // The deploy workflow restricts each step to its own project so the
-  // pre-deploy run doesn't try to reach a (nonexistent) SMOKE_URL and
-  // the post-deploy run doesn't re-execute the offline unit suite.
+  // Two dimensions of projects: suite (unit / smoke) × browser
+  // (chromium / webkit / firefox). Each combination is its own
+  // Playwright project so the deploy workflow can pick exact subsets
+  // and so per-browser failures show up distinctly in reports.
+  //
+  // Cross-browser matters because public users are on more than
+  // Chromium — iOS Safari is the only browser on iPhone (and the
+  // only PWA-install path there), and Webkit + Firefox each have
+  // their own Intl / localStorage / popup quirks.
+  //
+  // V8 coverage in fixtures.js is gated to chromium (page.coverage
+  // is a chromium-only API), so the coverage report numbers reflect
+  // the chromium runs.
   projects: [
-    {
-      name: 'unit',
-      testIgnore: ['**/smoke.spec.js'],
-      use: { browserName: 'chromium' },
-    },
-    {
-      name: 'smoke',
-      testMatch: ['**/smoke.spec.js'],
-      use: { browserName: 'chromium' },
-    },
+    ...['chromium', 'webkit', 'firefox'].flatMap(browserName => [
+      {
+        name: `unit-${browserName}`,
+        testIgnore: ['**/smoke.spec.js'],
+        use: { browserName },
+      },
+      {
+        name: `smoke-${browserName}`,
+        testMatch: ['**/smoke.spec.js'],
+        use: { browserName },
+      },
+    ]),
   ],
 });

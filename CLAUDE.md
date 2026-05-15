@@ -103,9 +103,28 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
     401 / silent-reauth / quota / 404 / latency scenarios and
     assert what was called. Real Google hosts are aborted via
     `context.route` so nothing escapes.
+  - `tests/smoke.spec.js` — post-deploy boot check against the live
+    deployed URL. Opens `SMOKE_URL` in a real headless browser,
+    waits for `#auth-section` to appear (so gapi + gis loaded, the
+    inline script ran without throwing, and `showSection('auth')`
+    fired), and asserts no console errors. Catches deploy regressions
+    the offline unit suite can't: CSP changes blocking inline scripts,
+    moved or renamed CDN deps, GIS / gapi API surface changes,
+    Tailwind classes missing from the built CSS. Skipped when
+    `SMOKE_URL` is unset so local default runs stay quiet.
   - `tests/playwright.config.js`, `tests/package.json`,
-    `tests/package-lock.json` — Playwright runner config and
-    pinned deps. `tests/node_modules` is gitignored.
+    `tests/package-lock.json` — Playwright runner config and pinned
+    deps. `tests/node_modules` is gitignored. The config defines two
+    suite × three browser projects: `unit-{chromium,webkit,firefox}`
+    runs the mocked Drive / GIS suite against the local
+    `.test-built.html` (smoke ignored), `smoke-{chromium,webkit,firefox}`
+    runs only `smoke.spec.js`. The deploy workflow targets each step's
+    project subset explicitly so pre-deploy doesn't try to reach
+    `SMOKE_URL` and post-deploy doesn't re-run the offline suite.
+    Cross-browser matters because iOS users only get Webkit, and each
+    engine has its own Intl / localStorage / popup quirks. V8 coverage
+    in `fixtures.js` is chromium-gated (`page.coverage` is a chromium-
+    only API), so coverage numbers reflect chromium runs.
   - `tests/coverage-reports/` (gitignored) — `monocart-reporter`
     output: `coverage/index.html` (browseable per-file line/branch
     report), `coverage/lcov.info`, `coverage/coverage-summary.json`,
