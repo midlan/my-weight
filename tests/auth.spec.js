@@ -327,6 +327,190 @@ test('wipe with mismatched confirmation → file preserved, mismatch alert', asy
   expect(count).toBe(1);
 });
 
+test('saveRecord with duplicate datetime → alert with the colliding minute, no upload', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Capture the dup-detection alert.
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => {
+    if (d.type() === 'confirm') d.accept();  // (future-date confirm, etc.)
+    else { alertMessage = d.message(); d.accept(); }
+  });
+
+  // Flip to custom mode and pick the colliding minute.
+  await page.locator('#now-btn').click();
+  // datetime-local local-time string that matches the UTC minute we have.
+  const local = await page.evaluate(() => {
+    const d = new Date('2026-05-13T07:00:00.000Z');
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  await page.locator('#datetime').fill(local);
+  await page.locator('#weight').fill('73.0');
+  await page.locator('#weight-form button[type=submit]').click();
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Záznam s tímto datem a časem již existuje');
+  // The alert names the colliding datetime in brackets — minute precision.
+  expect(alertMessage).toMatch(/\d{1,2}\. ?\d{1,2}\. ?2026 \d{1,2}:00/);
+
+  // Nothing was uploaded — file still has only the original record.
+  const stored = await page.evaluate((id) => JSON.parse(__mock.files[id].body), fileId);
+  expect(Object.keys(stored.records)).toEqual(['2026-05-13T07:00:00.000Z']);
+});
+
+test('prefillWeightInput dirty flag: typed value survives a delete, fresh value resumes after save', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: {
+      '2026-05-13T07:00:00.000Z': { weight: 72.5 },
+      '2026-05-14T07:00:00.000Z': { weight: 72.3 },  // newest, will get prefilled
+    },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // After load, the weight input is prefilled with the newest record.
+  await expect(page.locator('#weight')).toHaveValue('72.3');
+
+  // User types something custom — input becomes dirty.
+  await page.locator('#weight').fill('99.9');
+  expect(await page.evaluate(() => weightInputDirty)).toBe(true);
+
+  // Delete the newest record. Dirty input must NOT get clobbered.
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.accept());
+  await page.locator('li[data-key="2026-05-14T07:00:00.000Z"] button[title="Smazat"]').click();
+  await expect(page.locator('li[data-key="2026-05-14T07:00:00.000Z"]')).toHaveCount(0);
+  await expect(page.locator('#weight')).toHaveValue('99.9');
+
+  // Successful save clears the dirty flag → subsequent record changes
+  // re-prefill from the latest record.
+  await page.locator('#weight-form button[type=submit]').click();
+  await expect.poll(() => page.evaluate(() => weightInputDirty), { timeout: 3000 }).toBe(false);
+
+  // Delete the just-saved 99.9 row. Now the newest is 72.5 again.
+  const savedKey = await page.evaluate(() => {
+    const list = recordsAsList();
+    return list[list.length - 1].datetime;
+  });
+  await page.locator(`li[data-key="${savedKey}"] button[title="Smazat"]`).click();
+  await expect(page.locator(`li[data-key="${savedKey}"]`)).toHaveCount(0);
+
+  // Input should now reflect the surviving record's weight, not the
+  // stale 99.9 we typed earlier.
+  await expect(page.locator('#weight')).toHaveValue('72.5');
+});
+
+test('import my-weight v2 file → records merge, dedup at minute precision', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },  // pre-existing
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.accept());  // accept "Naimportovat X záznamů?" + "Naimportováno X záznamů"
+
+  const importFile = JSON.stringify({
+    version: 2,
+    records: {
+      '2026-05-13T07:00:00.000Z': { weight: 71.0 },   // SAME MINUTE as existing → should dedup
+      '2026-05-15T07:00:00.000Z': { weight: 70.0 },   // new
+    },
+  });
+  await page.locator('#import-input').setInputFiles({
+    name: 'my-weight-import.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(importFile),
+  });
+
+  // Wait for the new record to land.
+  await expect(page.locator('li[data-key="2026-05-15T07:00:00.000Z"]')).toBeVisible({ timeout: 5000 });
+
+  const after = await page.evaluate(() => recordsAsList().map(r => ({ key: r.datetime, w: r.weight })));
+  expect(after).toEqual([
+    { key: '2026-05-13T07:00:00.000Z', w: 72.5 },   // original preserved (dedup), not 71.0
+    { key: '2026-05-15T07:00:00.000Z', w: 70.0 },
+  ]);
+});
+
+test('import kaloricketabulky.cz format → records added with epoch-ms datetimes', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.accept());
+
+  // Kaloricketabulky format: data.values[].from is epoch-ms, value is kg.
+  const epochMay13 = Date.UTC(2026, 4, 13, 7, 0, 0);
+  const epochMay14 = Date.UTC(2026, 4, 14, 8, 30, 0);
+  const importFile = JSON.stringify({
+    data: {
+      values: [
+        { from: epochMay13, value: 72.5 },
+        { from: epochMay14, value: 72.0 },
+      ],
+      target: [/* goal weight — must be ignored */ { from: epochMay13, value: 70 }],
+    },
+  });
+  await page.locator('#import-input').setInputFiles({
+    name: 'kt-export.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(importFile),
+  });
+
+  await expect.poll(() => page.evaluate(() => recordsCount()), { timeout: 5000 }).toBe(2);
+
+  const after = await page.evaluate(() => recordsAsList().map(r => ({ key: r.datetime, w: r.weight })));
+  expect(after).toEqual([
+    { key: '2026-05-13T07:00:00.000Z', w: 72.5 },
+    { key: '2026-05-14T08:30:00.000Z', w: 72.0 },
+  ]);
+});
+
+test('import where every record is a duplicate → "all duplicates" alert, no upload', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Reset call log so we can check no PATCH happens during import.
+  await page.evaluate(() => { __mock.calls.length = 0; });
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => { alertMessage = d.message(); d.accept(); });
+
+  const importFile = JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 71.0 } },  // same minute
+  });
+  await page.locator('#import-input').setInputFiles({
+    name: 'dup.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(importFile),
+  });
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('už existuje');
+
+  // No PATCH issued.
+  const patchCalls = await page.evaluate(() => __mock.calls.filter(c =>
+    c.type === 'upload.fetch' && c.method === 'PATCH'));
+  expect(patchCalls).toEqual([]);
+});
+
 test('saveEdit happy: change weight on a row → file body updated with new weight', async ({ page }) => {
   const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
     version: 2,

@@ -148,6 +148,51 @@ test.describe('migrate()', () => {
     expect(result.migrated).toBe(true);
   });
 
+  test('future schema version on load → reload code path runs, isReloadPending set', async ({ page }) => {
+    // location.reload itself is [Unforgeable] in Chromium so we can't
+    // stub it. The migrate code does `location.reload()` immediately
+    // before throwing the isReloadPending error, so observing the
+    // throw with the flag + the sessionStorage guard being set is
+    // sufficient evidence the reload code path executed.
+    const result = await page.evaluate(() => {
+      sessionStorage.removeItem('my-weight:reloaded-for-newer-schema');
+      try {
+        migrate({ version: 99, records: {} });
+        return { thrown: false };
+      } catch (e) {
+        return {
+          thrown: true,
+          isReloadPending: Boolean(e.isReloadPending),
+          flagSet: sessionStorage.getItem('my-weight:reloaded-for-newer-schema'),
+        };
+      }
+    });
+    expect(result.thrown).toBe(true);
+    expect(result.isReloadPending).toBe(true);
+    expect(result.flagSet).toBe('1');
+  });
+
+  test('future schema version on load with guard already set → surfaces error, does NOT reload again', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      sessionStorage.setItem('my-weight:reloaded-for-newer-schema', '1');
+      try {
+        migrate({ version: 99, records: {} });
+        return { thrown: false };
+      } catch (e) {
+        return {
+          thrown: true,
+          isReloadPending: Boolean(e.isReloadPending),
+          newerSchemaVersion: e.newerSchemaVersion,
+          message: e.message,
+        };
+      }
+    });
+    expect(result.thrown).toBe(true);
+    expect(result.isReloadPending).toBe(false);     // no second reload
+    expect(result.newerSchemaVersion).toBe(99);
+    expect(result.message).toContain('99');
+  });
+
   test('future schema version on import surfaces the version, no reload', async ({ page }) => {
     const err = await page.evaluate(() => {
       try {

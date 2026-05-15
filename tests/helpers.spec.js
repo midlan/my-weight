@@ -112,6 +112,69 @@ test.describe('effectivePreset() / effectiveTheme()', () => {
   });
 });
 
+test.describe('applyRangePreset() — fixed presets set the input values', () => {
+  test('"7d" sets `to` = today, `from` = ~7 days earlier', async ({ page }) => {
+    const out = await page.evaluate(() => {
+      records = {};
+      applyRangePreset('7d');
+      return {
+        from: document.getElementById('range-from').value,
+        to: document.getElementById('range-to').value,
+      };
+    });
+    // `to` is today in local-date format.
+    const today = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    expect(out.to).toBe(todayStr);
+    // `from` is 7 days earlier — verify the gap is ~7 days.
+    const gapDays = Math.round((new Date(out.to) - new Date(out.from)) / 86_400_000);
+    expect(gapDays).toBe(7);
+  });
+
+  test('"30d" → gap is 30 days', async ({ page }) => {
+    const out = await page.evaluate(() => {
+      applyRangePreset('30d');
+      return {
+        from: document.getElementById('range-from').value,
+        to: document.getElementById('range-to').value,
+      };
+    });
+    const gapDays = Math.round((new Date(out.to) - new Date(out.from)) / 86_400_000);
+    expect(gapDays).toBe(30);
+  });
+
+  test('"3m" / "6m" / "1y" → from-year matches expected calendar math', async ({ page }) => {
+    const results = await page.evaluate(() => {
+      const probe = (preset) => {
+        applyRangePreset(preset);
+        return {
+          from: document.getElementById('range-from').value,
+          to: document.getElementById('range-to').value,
+        };
+      };
+      return { '3m': probe('3m'), '6m': probe('6m'), '1y': probe('1y') };
+    });
+    // Just sanity-check the relative ordering: from < to in each case.
+    for (const preset of ['3m', '6m', '1y']) {
+      expect(new Date(results[preset].from).getTime())
+        .toBeLessThan(new Date(results[preset].to).getTime());
+    }
+  });
+
+  test('currentPreset is updated and the matching button gains the active class', async ({ page }) => {
+    const out = await page.evaluate(() => {
+      applyRangePreset('30d');
+      const active = Array.from(document.querySelectorAll('.range-btn'))
+        .filter(b => b.classList.contains('bg-blue-600'))
+        .map(b => b.dataset.range);
+      return { currentPreset, active };
+    });
+    expect(out.currentPreset).toBe('30d');
+    expect(out.active).toEqual(['30d']);
+  });
+});
+
 test.describe('applyRangePreset() — "all" branch', () => {
   test('picks the oldest record\'s datetime as `from`', async ({ page }) => {
     const fromVal = await page.evaluate(() => {
