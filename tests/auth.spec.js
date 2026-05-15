@@ -885,6 +885,212 @@ test('first-login install confirm fires once when prompt event + no prior prompt
   expect(flag).toBeTruthy();
 });
 
+test('pagination: 15 records render 10 per page; prev/next move between pages', async ({ page }) => {
+  // Build 15 records on consecutive dates.
+  const records = {};
+  for (let i = 0; i < 15; i++) {
+    const d = new Date(Date.UTC(2026, 0, 1 + i, 7, 0, 0));
+    records[d.toISOString()] = { weight: 70 + i * 0.1 };
+  }
+  await page.evaluate((recs) => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: recs,
+  })), records);
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Page 1: 10 newest records, "Prev" disabled.
+  await expect(page.locator('#history-list li')).toHaveCount(10);
+  await expect(page.locator('#prev-page')).toBeDisabled();
+  await expect(page.locator('#next-page')).toBeEnabled();
+  await expect(page.locator('#page-info')).toContainText('1–10 z 15');
+
+  // Click next → page 2: 5 records.
+  await page.locator('#next-page').click();
+  await expect(page.locator('#history-list li')).toHaveCount(5);
+  await expect(page.locator('#prev-page')).toBeEnabled();
+  await expect(page.locator('#next-page')).toBeDisabled();
+  await expect(page.locator('#page-info')).toContainText('11–15 z 15');
+
+  // Bump page size to 25 → 15 records fit on one page, prev/next
+  // both disabled. (Pagination element itself only hides when total
+  // records <= ALLOWED_PAGE_SIZES[0]=10; with 15 records it stays
+  // visible so the user can see "1–15 z 15" + the page-size selector.)
+  await page.locator('#page-size').selectOption('25');
+  await expect(page.locator('#history-list li')).toHaveCount(15);
+  await expect(page.locator('#prev-page')).toBeDisabled();
+  await expect(page.locator('#next-page')).toBeDisabled();
+  await expect(page.locator('#page-info')).toContainText('1–15 z 15');
+});
+
+test('note expand/collapse: clicking a row with a note toggles the expanded layout', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5, note: 'po dlouhém běhu' } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  const row = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  // Initially collapsed: row uses items-center; note span is truncated.
+  await expect(row).toHaveClass(/items-center/);
+
+  // Click on the note text — it always has the toggle handler in both
+  // states (in collapsed mode via the parent content div, in expanded
+  // mode on the noteSpan itself).
+  await row.getByText('po dlouhém běhu').click();
+  await expect(row).toHaveClass(/flex-col/);
+
+  // Click again to collapse.
+  await row.getByText('po dlouhém běhu').click();
+  await expect(row).toHaveClass(/items-center/);
+});
+
+test('stepper +/− buttons in the new-record form update the input and set dirty flag', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Sanity: input is empty, dirty flag is false (no records to prefill from).
+  await expect(page.locator('#weight')).toHaveValue('');
+  expect(await page.evaluate(() => weightInputDirty)).toBe(false);
+
+  // Three "+" clicks then one "−" — math is tested in unit specs,
+  // here we verify the wiring through the click handlers.
+  await page.locator('#weight-increment').click();
+  await page.locator('#weight-increment').click();
+  await page.locator('#weight-increment').click();
+  await expect(page.locator('#weight')).toHaveValue('0.3');
+  await page.locator('#weight-decrement').click();
+  await expect(page.locator('#weight')).toHaveValue('0.2');
+
+  // Stepper clicks mark the input dirty too (programmatic value
+  // changes don't fire the 'input' event, so the handlers set the
+  // flag explicitly).
+  expect(await page.evaluate(() => weightInputDirty)).toBe(true);
+});
+
+test('"teď" → custom datetime toggle: clicking #now-btn reveals the datetime input', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  await expect(page.locator('#now-btn')).toBeVisible();
+  await expect(page.locator('#datetime')).toBeHidden();
+
+  await page.locator('#now-btn').click();
+  await expect(page.locator('#now-btn')).toBeHidden();
+  await expect(page.locator('#datetime')).toBeVisible();
+
+  // The value is pre-filled with "now" — should match today's date.
+  const value = await page.locator('#datetime').inputValue();
+  const todayStr = await page.evaluate(() => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  });
+  expect(value.startsWith(todayStr)).toBe(true);
+});
+
+test('future-date submit triggers a confirm; dismissing aborts the save', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Switch to custom datetime mode and pick a date a year in the future.
+  await page.locator('#now-btn').click();
+  const future = await page.evaluate(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 1);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  await page.locator('#datetime').fill(future);
+  await page.locator('#weight').fill('72.5');
+
+  // Dismiss the future-date confirm.
+  page.removeAllListeners('dialog');
+  const dialogs = [];
+  page.on('dialog', d => {
+    dialogs.push({ type: d.type(), message: d.message() });
+    if (d.type() === 'confirm') d.dismiss();
+    else d.accept();
+  });
+
+  await page.locator('#weight-form button[type=submit]').click();
+  // Give the cancellation a tick to settle.
+  await page.waitForTimeout(100);
+
+  expect(dialogs.some(d => d.type === 'confirm' && d.message.includes('budoucnosti'))).toBe(true);
+  // No upload happened.
+  const patchCalls = await page.evaluate(() => __mock.calls.filter(c =>
+    c.type === 'upload.fetch' && (c.method === 'PATCH' || c.method === 'POST')));
+  expect(patchCalls).toEqual([]);
+  const fileBody = await page.evaluate((id) => JSON.parse(__mock.files[id].body), fileId);
+  expect(fileBody.records).toEqual({});
+});
+
+test('export downloads the live Drive bytes verbatim', async ({ page }) => {
+  const rawBody = JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+    settings: { theme: 'dark' },
+  });
+  await page.evaluate((body) => __mock.addFile('weight_records.json', body), rawBody);
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
+  await page.locator('#menu-btn').click();
+  await page.locator('#export-btn').click();
+  const download = await downloadPromise;
+
+  // Filename pattern: my-weight-YYYY-MM-DD.json
+  expect(download.suggestedFilename()).toMatch(/^my-weight-\d{4}-\d{2}-\d{2}\.json$/);
+
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const c of stream) chunks.push(c);
+  const text = Buffer.concat(chunks).toString('utf-8');
+  expect(text).toBe(rawBody);
+});
+
+test('editingRowHasChanges + restoreEditingDraft: track and restore typed edits', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Enter edit mode.
+  const row = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  await row.locator('button[title="Upravit"]').click();
+
+  // editingRowHasChanges is false right after entering edit mode
+  // (input values match the stored record).
+  expect(await page.evaluate(() => editingRowHasChanges())).toBe(false);
+
+  // Mutate the weight input → editingRowHasChanges flips to true.
+  await row.locator('input[type="number"]').fill('73.0');
+  expect(await page.evaluate(() => editingRowHasChanges())).toBe(true);
+
+  // restoreEditingDraft writes given values back into the editing
+  // row's inputs.
+  await page.evaluate(() => restoreEditingDraft({
+    dtValue: document.querySelector('li[data-key="2026-05-13T07:00:00.000Z"] input[type=datetime-local]').value,
+    weightValue: '72.5',
+    noteValue: '',
+  }));
+  await expect(row.locator('input[type="number"]')).toHaveValue('72.5');
+  expect(await page.evaluate(() => editingRowHasChanges())).toBe(false);
+});
+
 test('logout clears state and shows auth section', async ({ page }) => {
   await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
     version: 2,

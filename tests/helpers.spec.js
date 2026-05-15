@@ -13,6 +13,37 @@ test.beforeEach(async ({ page, context }) => {
   await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded' });
 });
 
+test.describe('describeDriveError()', () => {
+  test('maps the storageQuotaExceeded reason to the Czech "úložiště plné" message', async ({ page }) => {
+    const out = await page.evaluate(() => describeDriveError({
+      result: { error: { errors: [{ reason: 'storageQuotaExceeded' }], message: 'The user has exceeded their Drive storage quota.' } },
+    }));
+    expect(out).toContain('úložiště je plné');
+  });
+
+  test('falls through to err.result.error.message when reason is unrecognized', async ({ page }) => {
+    const out = await page.evaluate(() => describeDriveError({
+      result: { error: { errors: [{ reason: 'somethingElse' }], message: 'Whoops' } },
+    }));
+    expect(out).toBe('Whoops');
+  });
+
+  test('reads err.error.message when result wrapper is missing', async ({ page }) => {
+    const out = await page.evaluate(() => describeDriveError({ error: { message: 'plain' } }));
+    expect(out).toBe('plain');
+  });
+
+  test('falls back to err.message for vanilla Error instances', async ({ page }) => {
+    const out = await page.evaluate(() => describeDriveError(new Error('bare')));
+    expect(out).toBe('bare');
+  });
+
+  test('returns "neznámá chyba" when nothing usable is on the error', async ({ page }) => {
+    const out = await page.evaluate(() => describeDriveError({}));
+    expect(out).toBe('neznámá chyba');
+  });
+});
+
 test.describe('toLocalInputValue() / toDateInputValue()', () => {
   test('toLocalInputValue formats a Date as "YYYY-MM-DDTHH:MM" in local time', async ({ page }) => {
     const out = await page.evaluate(() => toLocalInputValue(new Date(2026, 4, 13, 7, 30)));
