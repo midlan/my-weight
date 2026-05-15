@@ -22,3 +22,8 @@ tests/coverage-reports/
 # tests so logo functions are exercised by page.goto (their coverage
 # now merges with the rest of the suite). Don't ship.
 public/.test-built.html
+
+# Claude Code per-user permissions / settings — Claude Code reads it
+# but it's per-developer state. Shared project rules live in
+# .claude/settings.json.
+.claude/settings.local.json
