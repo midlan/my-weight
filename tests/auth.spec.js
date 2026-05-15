@@ -327,6 +327,215 @@ test('wipe with mismatched confirmation → file preserved, mismatch alert', asy
   expect(count).toBe(1);
 });
 
+test('saveEdit happy: change weight on a row → file body updated with new weight', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  const row = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  await row.locator('button[title="Upravit"]').click();
+  await row.locator('input[type="number"]').fill('72.6');
+  await row.locator('button[title="Uložit"]').click();
+
+  // After successful save the row re-renders in view mode (no inputs).
+  await expect(row.locator('input')).toHaveCount(0);
+
+  const stored = await page.evaluate((id) => JSON.parse(__mock.files[id].body), fileId);
+  expect(stored.records).toEqual({ '2026-05-13T07:00:00.000Z': { weight: 72.6 } });
+});
+
+test('saveEdit with new datetime: old key removed, new key set in storage', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  const row = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  await row.locator('button[title="Upravit"]').click();
+  // datetime-local format is "YYYY-MM-DDTHH:MM" in local time. The mock
+  // file stores UTC; the edit input shows the local-converted value.
+  // To bump just the minute, read the current value and increment.
+  const newDt = await page.evaluate(() => {
+    const inp = document.querySelector('li[data-key="2026-05-13T07:00:00.000Z"] input[type="datetime-local"]');
+    const d = new Date(inp.value);
+    d.setMinutes(d.getMinutes() + 5);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  await row.locator('input[type="datetime-local"]').fill(newDt);
+  await row.locator('button[title="Uložit"]').click();
+
+  // The row's data-key changes, so the original locator goes stale.
+  // Wait for the file to be PATCHed.
+  await page.waitForFunction((id) => {
+    const body = JSON.parse(__mock.files[id].body);
+    const keys = Object.keys(body.records);
+    return keys.length === 1 && keys[0] !== '2026-05-13T07:00:00.000Z';
+  }, fileId);
+
+  const stored = await page.evaluate((id) => JSON.parse(__mock.files[id].body), fileId);
+  expect(Object.keys(stored.records)).toHaveLength(1);
+  expect(stored.records['2026-05-13T07:00:00.000Z']).toBeUndefined();
+  expect(Object.values(stored.records)[0]).toEqual({ weight: 72.5 });
+});
+
+test('deleteRecord single: confirm → record removed from memory and Drive', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: {
+      '2026-05-13T07:00:00.000Z': { weight: 72.5 },
+      '2026-05-14T07:00:00.000Z': { weight: 72.3 },
+    },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.accept()); // accept the "Smazat …?" confirm
+
+  // Delete the older one.
+  const row = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  await row.locator('button[title="Smazat"]').click();
+
+  // Wait until the file body no longer contains the deleted record.
+  await page.waitForFunction((id) => {
+    const body = JSON.parse(__mock.files[id].body);
+    return !body.records['2026-05-13T07:00:00.000Z'];
+  }, fileId);
+
+  const stored = await page.evaluate((id) => JSON.parse(__mock.files[id].body), fileId);
+  expect(stored.records).toEqual({ '2026-05-14T07:00:00.000Z': { weight: 72.3 } });
+
+  // The remaining row should still be in the DOM; the deleted one gone.
+  await expect(page.locator('li[data-key="2026-05-14T07:00:00.000Z"]')).toBeVisible();
+  await expect(page.locator('li[data-key="2026-05-13T07:00:00.000Z"]')).toHaveCount(0);
+});
+
+test('deleteRecord cancelled: confirm rejected → record stays', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.dismiss()); // reject the confirm
+
+  await page.locator('li[data-key="2026-05-13T07:00:00.000Z"] button[title="Smazat"]').click();
+
+  // Give it a moment in case the dismiss is mishandled; nothing should
+  // change. (Dismiss is synchronous; one tick is enough.)
+  await page.waitForTimeout(100);
+
+  const stored = await page.evaluate((id) => JSON.parse(__mock.files[id].body), fileId);
+  expect(stored.records['2026-05-13T07:00:00.000Z']).toEqual({ weight: 72.5 });
+  // No drive.files.delete or upload was triggered.
+  const callsAfter = await page.evaluate(() => __mock.calls.filter(c =>
+    c.type === 'drive.files.delete' || (c.type === 'upload.fetch' && c.method === 'PATCH')));
+  expect(callsAfter).toEqual([]);
+});
+
+test('saveRecord with concurrent rev mismatch: refetch + reapply, both writes survive', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Simulate "another device" appended a record AND bumped the
+  // headRevisionId between our load and our save. saveRecord's
+  // preflight will detect the rev change, refetch, reapply.
+  await page.evaluate((id) => {
+    const f = __mock.files[id];
+    f.body = JSON.stringify({
+      version: 2,
+      records: {
+        '2026-05-13T07:00:00.000Z': { weight: 72.5 },
+        '2026-05-13T08:00:00.000Z': { weight: 72.0 },  // appended by "other device"
+      },
+    });
+    f.headRevisionId = 'revFromOtherDevice';
+  }, fileId);
+
+  // User saves a brand-new record at a different minute.
+  await page.locator('#weight').fill('73.0');
+  await page.locator('#weight-form button[type=submit]').click();
+
+  // Wait for the upload to land.
+  await page.waitForFunction((id) => {
+    const body = JSON.parse(__mock.files[id].body);
+    return Object.keys(body.records).length === 3;
+  }, fileId);
+
+  const stored = await page.evaluate((id) => JSON.parse(__mock.files[id].body), fileId);
+  const keys = Object.keys(stored.records);
+  expect(keys).toHaveLength(3);
+  expect(stored.records['2026-05-13T07:00:00.000Z']).toEqual({ weight: 72.5 });   // original
+  expect(stored.records['2026-05-13T08:00:00.000Z']).toEqual({ weight: 72.0 });   // other device's
+  // The user's new record carries weight 73.0; its key is whichever minute it landed in.
+  const ours = Object.entries(stored.records).find(([, v]) => v.weight === 73.0);
+  expect(ours).toBeDefined();
+});
+
+test('unrecognized data → user OKs recovery → raw bytes downloaded, file reset to empty v2', async ({ page }) => {
+  // Garbage file: version matches but records is the wrong type.
+  const rawBody = JSON.stringify({ version: 2, records: 'garbage', settings: { theme: 'dark' } });
+  const fileId = await page.evaluate((body) => __mock.addFile('weight_records.json', body), rawBody);
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.accept()); // accept the recovery confirm
+
+  // The recovery flow calls downloadJsonText(raw) which creates a Blob
+  // URL on an anchor with the download attribute and clicks it. That
+  // fires Playwright's "download" event — easier to assert against
+  // than stubbing the function (function declarations override any
+  // pre-set window binding from addInitScript).
+  const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const contents = Buffer.concat(chunks).toString('utf-8');
+  expect(contents).toBe(rawBody);
+
+  // File on the "server" was overwritten with an empty v2 envelope.
+  const stored = await page.evaluate((id) => JSON.parse(__mock.files[id].body), fileId);
+  expect(stored.version).toBe(2);
+  expect(stored.records).toEqual({});
+});
+
+test('unrecognized data → user cancels recovery → loading section stays, file untouched', async ({ page }) => {
+  const rawBody = JSON.stringify({ version: 2, records: 'garbage' });
+  const fileId = await page.evaluate((body) => __mock.addFile('weight_records.json', body), rawBody);
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.dismiss()); // reject the recovery confirm
+
+  await page.locator('#login-btn').click();
+
+  await expect(page.locator('#loading-section')).toBeVisible();
+  await expect(page.locator('#app-section')).toBeHidden();
+
+  // File untouched on the "server".
+  const stored = await page.evaluate((id) => __mock.files[id].body, fileId);
+  expect(stored).toBe(rawBody);
+
+  // No PATCH happened.
+  const patchCalls = await page.evaluate(() => __mock.calls.filter(c =>
+    c.type === 'upload.fetch' && c.method === 'PATCH'));
+  expect(patchCalls).toEqual([]);
+});
+
 test('logout clears state and shows auth section', async ({ page }) => {
   await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
     version: 2,
