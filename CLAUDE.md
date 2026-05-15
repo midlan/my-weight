@@ -71,6 +71,16 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   the step is cached on the hash of `icon.svg`, so it only
   re-runs when the SVG source changes. All four generated files
   are gitignored.
+- `functions/_middleware.js` — Cloudflare Pages edge middleware
+  that runs before static assets are served. Today's only job is
+  301-redirecting the bare CF Pages aliases (`my-weight.pages.dev`,
+  `dev.my-weight.pages.dev`) to the custom domains so the app has
+  one canonical origin (matters for OAuth, SEO, link sharing).
+  Per-deployment preview URLs (`<hash>.my-weight.pages.dev`) are
+  intentionally not redirected — those are the URLs the deploy
+  workflow's smoke step hits. Wrangler picks up `functions/`
+  automatically when `pages deploy public` runs from the repo
+  root (which the workflow's deploy step does).
 - `tests/` — automated test infra (npm-scoped to this dir so the
   rest of the project stays toolchain-free). Every spec navigates
   to `public/.test-built.html` (gitignored) — a pre-inlined copy

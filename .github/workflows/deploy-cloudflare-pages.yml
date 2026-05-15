@@ -38,6 +38,10 @@ jobs:
               | node --check - \
               || { echo "::error file=$f::JS syntax error in inline <script>"; exit 1; }
           done
+          for f in functions/*.js; do
+            node --check "$f" \
+              || { echo "::error file=$f::JS syntax error in Pages Function"; exit 1; }
+          done
           jq empty public/manifest.webmanifest
 
       # Playwright loads public/index.html via file:// in Chromium and
