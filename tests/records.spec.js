@@ -1,10 +1,4 @@
-import { test, expect } from './fixtures.js';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import path from 'node:path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const PAGE_URL = pathToFileURL(path.join(__dirname, '..', 'public', 'index.html')).href;
+import { test, expect, PAGE_URL } from './fixtures.js';
 
 // Tests for the records-related helpers: findDuplicateRecord,
 // recordsAsList, recordsCount, recordMatchesValues. Top-level `let

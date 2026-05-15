@@ -1,23 +1,11 @@
-import { test, expect } from './fixtures.js';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import fs from 'node:fs';
+import { test, expect, PAGE_URL } from './fixtures.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Load the source HTML + icon.svg from disk and pre-inline the SVG so
-// `LOGO_AVAILABLE = !!document.querySelector('#logo .seg-1-a')` is true
-// at script-load time (it's a const, can't be flipped after the fact).
-// The CI workflow does the same substitution at deploy time via perl;
-// we replicate it here so the tests exercise the same shape users see.
-const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
-const iconSvg = fs.readFileSync(path.join(__dirname, '..', 'public', 'icon.svg'), 'utf8');
-const builtHtml = indexHtml.replace(/<img\s+[^>]*\bdata-inline-svg\b[^>]*\/?>/, iconSvg);
-
+// fixtures.js pre-inlines icon.svg into the shared test HTML, so
+// `LOGO_AVAILABLE = !!document.querySelector('#logo .seg-1-a')` is
+// true at script-load and the logo functions actually run.
 test.beforeEach(async ({ page, context }) => {
   await context.route(/^https?:\/\//, route => route.abort());
-  await page.setContent(builtHtml, { waitUntil: 'domcontentloaded' });
+  await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded' });
 });
 
 // Helper: collect the seg-* / dp-after-* class names of every element

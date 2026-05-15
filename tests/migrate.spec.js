@@ -1,10 +1,4 @@
-import { test, expect } from './fixtures.js';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import path from 'node:path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const PAGE_URL = pathToFileURL(path.join(__dirname, '..', 'public', 'index.html')).href;
+import { test, expect, PAGE_URL } from './fixtures.js';
 
 // Load the source HTML once per test. file:// is fine — we only need the
 // inline <script> to parse and define top-level functions on window. The
