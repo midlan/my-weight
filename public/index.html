@@ -1374,36 +1374,28 @@
     // We skip a second pre-flight after refetch because we just observed
     // the current revisionId — there's nothing newer to check against
     // (Drive's PATCH ignores If-Match either way).
-    async function uploadWithConflictRetry(applyIntent, maxRetries = 3) {
-      let attempts = 0;
-      let didRefetch = false;
-      while (true) {
-        if (fileId && !didRefetch) {
-          const remoteRev = await readRemoteRevision();
-          if (remoteRev !== revisionId) {
-            if (attempts >= maxRetries) {
-              throw new Error('Příliš mnoho konfliktů při ukládání');
-            }
-            attempts++;
-            if (remoteRev === null) {
-              // File deleted on another device; treat as starting from empty.
-              fileId = null;
-              revisionId = null;
-              records = {};
-              settings = {};
-            } else {
-              await fetchContentByFileId();
-              revisionId = remoteRev;
-            }
-            didRefetch = true;
-            const cont = applyIntent();
-            if (!cont) return { success: false, refetched: true };
-            continue;
+    async function uploadWithConflictRetry(applyIntent) {
+      let refetched = false;
+      if (fileId) {
+        const remoteRev = await readRemoteRevision();
+        if (remoteRev !== revisionId) {
+          if (remoteRev === null) {
+            // File deleted on another device; treat as starting from empty.
+            fileId = null;
+            revisionId = null;
+            records = {};
+            settings = {};
+          } else {
+            await fetchContentByFileId();
+            revisionId = remoteRev;
           }
+          refetched = true;
+          const cont = applyIntent();
+          if (!cont) return { success: false, refetched: true };
         }
-        await uploadRecords();
-        return { success: true, refetched: didRefetch };
       }
+      await uploadRecords();
+      return { success: true, refetched };
     }
 
     async function loadRecords() {

@@ -70,6 +70,19 @@ jobs:
         working-directory: tests
         run: npx playwright test
 
+      # Coverage HTML is uploaded so users without a local dev env
+      # can browse the per-file line/branch report straight from the
+      # Actions run page. `if: always()` so a failing test still
+      # publishes whatever coverage made it through. The artifact
+      # name carries the run id so multiple runs don't collide.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ github.run_id }}
+          path: tests/coverage-reports/
+          retention-days: 14
+
       # The app is static and lives in public/. To publish a new file
       # to the site, drop it in public/ — no workflow change needed.
       # When real build steps appear later, they can either emit into

@@ -37,17 +37,16 @@ const BUILT_HTML = path.join(__dirname, '..', 'public', '.test-built.html');
 export const PAGE_URL = pathToFileURL(BUILT_HTML).href;
 
 // Wraps Playwright's `test` to start V8 coverage before each test
-// and feed it into monocart's global coverage report after. Only
-// fires locally — CI runs the github reporter and skips coverage.
-export const test = process.env.CI
-  ? base
-  : base.extend({
-      page: async ({ page }, use, testInfo) => {
-        await page.coverage.startJSCoverage({ resetOnNavigation: false });
-        await use(page);
-        const coverage = await page.coverage.stopJSCoverage();
-        await addCoverageReport(coverage, testInfo);
-      },
-    });
+// and feed it into monocart's global coverage report after. Runs in
+// both modes — the CI deploy workflow uploads the generated HTML as
+// an artifact so anyone can browse coverage without a local dev env.
+export const test = base.extend({
+  page: async ({ page }, use, testInfo) => {
+    await page.coverage.startJSCoverage({ resetOnNavigation: false });
+    await use(page);
+    const coverage = await page.coverage.stopJSCoverage();
+    await addCoverageReport(coverage, testInfo);
+  },
+});
 
 export { expect };

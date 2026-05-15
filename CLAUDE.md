@@ -72,17 +72,54 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   re-runs when the SVG source changes. All four generated files
   are gitignored.
 - `tests/` — automated test infra (npm-scoped to this dir so the
-  rest of the project stays toolchain-free).
-  - `tests/migrate.spec.js` — Playwright pure-function tests for
-    `migrate()` and `toMinuteKey()` (and a place to grow). Loads
-    `public/index.html` via `file://` in headless Chromium and
-    invokes the top-level functions through `page.evaluate`. No
-    UI assertions; the post-deploy curl smoke covers markup.
+  rest of the project stays toolchain-free). Every spec navigates
+  to `public/.test-built.html` (gitignored) — a pre-inlined copy
+  of `index.html` produced by `fixtures.js` at module load via
+  `scripts/inline-svg.mjs`. One source URL = one merged coverage
+  entry, and logo tests exercise the same SVG-inlined shape the
+  deploy pipeline ships.
+  - `tests/fixtures.js` — shared `test` / `expect` / `PAGE_URL`
+    exports. Builds the `.test-built.html` snapshot once per
+    worker and wraps Playwright's `test` to start V8 coverage
+    around each test and feed the result into monocart-reporter.
+  - `tests/migrate.spec.js` — pure-function tests for `migrate()`
+    and `toMinuteKey()` (legacy schema branches, future-version
+    reload guard, etc.).
+  - `tests/records.spec.js` — record-CRUD logic exercised through
+    `page.evaluate` against top-level functions. No mocked Drive
+    needed; operates on the in-memory `records` object.
+  - `tests/helpers.spec.js` — pure helpers (`formatDateTime`,
+    `recordsAsList`, etc.) plus locale-driven formatting (Playwright
+    is pinned to `cs-CZ` in config).
+  - `tests/logo.spec.js` — `displayLogoWeight` / `updateLogoFromLatest`
+    via the inlined SVG that's present at script-load.
+  - `tests/auth.spec.js` — mocked Google Identity + Drive harness.
+    `MOCK_INIT` (an `addInitScript`) stubs `window.google`,
+    `window.gapi`, and the upload-path `fetch` so the inline app
+    script talks to an in-memory store. Knobs on `window.__mock`
+    (`tokenIsValid`, `silentReauthSucceeds`, `forceNextGetError`,
+    `forceNextFetchError`, `forceNextDeleteError`,
+    `forceNextFetchDelay`) and a `calls[]` log let tests force
+    401 / silent-reauth / quota / 404 / latency scenarios and
+    assert what was called. Real Google hosts are aborted via
+    `context.route` so nothing escapes.
   - `tests/playwright.config.js`, `tests/package.json`,
     `tests/package-lock.json` — Playwright runner config and
     pinned deps. `tests/node_modules` is gitignored.
+  - `tests/coverage-reports/` (gitignored) — `monocart-reporter`
+    output: `coverage/index.html` (browseable per-file line/branch
+    report), `coverage/lcov.info`, `coverage/coverage-summary.json`,
+    `report.html`, `report.json`. CI uploads this directory as an
+    artifact on every workflow run (`coverage-report-<run_id>`,
+    14-day retention) so users without a local dev env can read
+    coverage straight from the Actions run page.
   - `tests/auth-manual.md` — manual OAuth / popup / 3p-cookies
     checklist that's firmly outside automated-test scope.
+- `scripts/inline-svg.mjs` — single implementation of the
+  `<img data-inline-svg>` → inlined-SVG substitution, used as a CLI
+  by the deploy workflow and imported as an ES module by
+  `tests/fixtures.js`. Exact-one match required; non-zero exit if
+  the marker doesn't appear exactly once.
 - `CLAUDE.md` — this file.
 
 ## Tech / dependencies

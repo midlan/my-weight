@@ -326,6 +326,207 @@ test('mid-session 401 + silent reauth fails → fatal 401, auth section shown', 
   expect(state.count).toBe(0);
 });
 
+test('cached valid token in localStorage → app loads without user click', async ({ page }) => {
+  // Seed localStorage + a Drive file via a second addInitScript so
+  // both fire on the reload below (the first one, MOCK_INIT, is
+  // already registered in beforeEach and runs ahead of this one,
+  // so window.__mock exists when this runs).
+  await page.addInitScript(() => {
+    localStorage.setItem('my-weight:token', JSON.stringify({
+      token: 'fake_cached_token',
+      expiresAt: Date.now() + 3_600_000,
+    }));
+    __mock.addFile('weight_records.json', JSON.stringify({
+      version: 2,
+      records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+    }));
+  });
+  await page.reload();
+  await page.addStyleTag({ content: '.hidden { display: none !important; }' });
+
+  // attemptAutoLogin's cached-token branch: loadStoredToken returns
+  // the seeded token, accessToken is set, onSignIn() fires — app
+  // section appears without us clicking #login-btn.
+  await expect(page.locator('#app-section')).toBeVisible();
+  await expect(page.locator('#history-list li').first()).toContainText('72,5 kg');
+
+  // The cached path skips the token client entirely — neither a
+  // silent (prompt:'none') nor an interactive token request fires.
+  const tokenRequests = await page.evaluate(() =>
+    __mock.calls.filter(c => c.type === 'requestAccessToken'));
+  expect(tokenRequests).toEqual([]);
+});
+
+test('save when Drive file deleted on another device → new file created, old data dropped', async ({ page }) => {
+  const oldFileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+  await expect(page.locator('#history-list li').first()).toContainText('72,5 kg');
+
+  // Simulate the file being deleted on another device between load
+  // and save. uploadWithConflictRetry's preflight (readRemoteRevision)
+  // gets a 404 from drive.files.get, returns null. The mismatch branch
+  // then treats null as "start from empty": resets fileId/records/
+  // settings, re-runs applyIntent on the empty state, and uploadRecords
+  // POSTs a fresh file. The previously-loaded record is intentionally
+  // dropped — that's the documented design choice.
+  await page.evaluate((id) => { delete __mock.files[id]; }, oldFileId);
+
+  await page.locator('#weight').fill('73.0');
+  await page.locator('#weight-form button[type=submit]').click();
+
+  // After the save, history should show only the new record.
+  await expect(page.locator('#history-list li')).toHaveCount(1);
+  await expect(page.locator('#history-list li').first()).toContainText('73 kg');
+
+  // A new Drive file exists under the same name, with a different id
+  // than the one we deleted (so the helper definitely went down the
+  // POST-create branch instead of trying to PATCH the missing id).
+  const created = await page.evaluate((removedId) => {
+    const f = __mock.getFile('weight_records.json');
+    return { exists: f !== null, sameAsDeleted: f && f.id === removedId };
+  }, oldFileId);
+  expect(created.exists).toBe(true);
+  expect(created.sameAsDeleted).toBe(false);
+
+  // And the POST path was actually traversed (not just PATCH).
+  const posted = await page.evaluate(() =>
+    __mock.calls.some(c => c.type === 'upload.fetch' && c.method === 'POST'));
+  expect(posted).toBe(true);
+});
+
+test('expired cached token at page load → silent reauth succeeds, app loads', async ({ page }) => {
+  // Token record present but expired: loadStoredToken() returns null
+  // (since expiresAt is in the past) while hasStoredTokenRecord()
+  // returns true — that combination is what makes attemptAutoLogin
+  // fire requestAccessToken({prompt:'none'}) on page load instead of
+  // just showing the auth section.
+  await page.addInitScript(() => {
+    localStorage.setItem('my-weight:token', JSON.stringify({
+      token: 'expired_token',
+      expiresAt: Date.now() - 1000,
+    }));
+    __mock.addFile('weight_records.json', JSON.stringify({
+      version: 2,
+      records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+    }));
+  });
+  await page.reload();
+  await page.addStyleTag({ content: '.hidden { display: none !important; }' });
+
+  // Silent token request returned a fresh token → onSignIn → records load.
+  await expect(page.locator('#app-section')).toBeVisible();
+  await expect(page.locator('#history-list li').first()).toContainText('72,5 kg');
+
+  // Exactly one silent request fired; no interactive prompt.
+  const reauthed = await page.evaluate(() =>
+    __mock.calls.filter(c => c.type === 'requestAccessToken' && c.prompt === 'none').length);
+  expect(reauthed).toBe(1);
+  const interactive = await page.evaluate(() =>
+    __mock.calls.some(c => c.type === 'requestAccessToken' && c.prompt !== 'none'));
+  expect(interactive).toBe(false);
+});
+
+test('expired cached token at page load → silent reauth fails, auth section shown', async ({ page }) => {
+  // Same expired-token setup, but silent reauth fires error_callback
+  // instead of resolving. The page-load branch of error_callback
+  // (no pendingSilentReauth) clears silent state and shows the auth
+  // section. No alert — page-load silent failures are quiet because
+  // the user hasn't tried to do anything yet.
+  let unexpectedAlert = '';
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => { unexpectedAlert = d.message(); d.accept(); });
+
+  await page.addInitScript(() => {
+    localStorage.setItem('my-weight:token', JSON.stringify({
+      token: 'expired_token',
+      expiresAt: Date.now() - 1000,
+    }));
+    __mock.silentReauthSucceeds = false;
+  });
+  await page.reload();
+  await page.addStyleTag({ content: '.hidden { display: none !important; }' });
+
+  await expect(page.locator('#auth-section')).toBeVisible();
+  await expect(page.locator('#app-section')).toBeHidden();
+  expect(unexpectedAlert).toBe('');
+
+  const reauthed = await page.evaluate(() =>
+    __mock.calls.some(c => c.type === 'requestAccessToken' && c.prompt === 'none'));
+  expect(reauthed).toBe(true);
+});
+
+test('settings save during 401 + silent fail → console.error only, no alert, stays on app', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {}, settings: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // No alerts expected — fail loudly if one shows.
+  let unexpectedAlert = '';
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => { unexpectedAlert = d.message(); d.accept(); });
+
+  // Capture console.error so we can confirm the silent-fail log fired.
+  const errors = [];
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+
+  // Make the next Drive metadata get 401, and silent reauth fail.
+  // scheduleSettingsSave's chain: uploadWithConflictRetry →
+  // readRemoteRevision (gapi.files.get) → 401 → withReauth →
+  // attemptSilentReauth → rejects → original 401 re-thrown →
+  // .catch(err => console.error('Failed to save settings', err)).
+  await page.evaluate(() => {
+    __mock.forceNextGetError = { status: 401 };
+    __mock.silentReauthSucceeds = false;
+  });
+
+  // Theme change triggers scheduleSettingsSave (500 ms debounce).
+  await page.locator('#menu-btn').click();
+  await page.locator('[data-theme="dark"]').click();
+
+  // Wait for the silent-fail log to land (debounce + reauth timeout
+  // shortcuts via error_callback fast in the mock, so 1.5 s is plenty).
+  await expect.poll(() => errors.some(e => e.includes('Failed to save settings')),
+    { timeout: 3000 }).toBe(true);
+
+  // Still on app section — silent settings-save failures do NOT call
+  // handleFatal401, so the user keeps working until their next
+  // explicit Drive op surfaces the auth screen.
+  await expect(page.locator('#app-section')).toBeVisible();
+  expect(unexpectedAlert).toBe('');
+});
+
+test('concurrent silent reauth attempts share one token request (pendingSilentReauth dedup)', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Clear the call log so we only count the dedup attempt below.
+  await page.evaluate(() => { __mock.calls = []; });
+
+  // Two near-simultaneous attemptSilentReauth() calls. The function
+  // sets pendingSilentReauth = state synchronously before the mock's
+  // tokenClient setTimeout(0) fires, so the second call must observe
+  // the existing promise and return it instead of issuing a second
+  // requestAccessToken.
+  await page.evaluate(async () => {
+    const a = attemptSilentReauth();
+    const b = attemptSilentReauth();
+    await Promise.all([a, b]);
+  });
+
+  const requestCount = await page.evaluate(() =>
+    __mock.calls.filter(c => c.type === 'requestAccessToken' && c.prompt === 'none').length);
+  expect(requestCount).toBe(1);
+});
+
 test('wipe with correct confirmation → file deleted, records cleared', async ({ page }) => {
   const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
     version: 2,

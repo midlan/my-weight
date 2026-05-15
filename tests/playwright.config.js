@@ -18,25 +18,28 @@ export default defineConfig({
     // app's primary audience.
     locale: 'cs-CZ',
   },
-  reporter: process.env.CI
-    ? [['list'], ['github']]
-    : [
-        ['list'],
-        ['monocart-reporter', {
-          name: 'my-weight coverage',
-          outputFile: './coverage-reports/report.html',
-          coverage: {
-            // All specs goto the pre-inlined `.test-built.html` (see
-            // fixtures.js). That single source path collects every
-            // tests's coverage — including the logo functions, which
-            // only run when the SVG is present at script-load.
-            entryFilter: (entry) => /public\/\.test-built\.html$/.test(entry.url || ''),
-            sourceFilter: (sourcePath) => /public\/\.test-built\.html$/.test(sourcePath),
-            outputDir: './coverage-reports/coverage',
-            reports: ['v8', 'console-summary', 'lcov', 'json-summary'],
-          },
-        }],
-      ],
+  // monocart-reporter runs in both modes so the coverage HTML is
+  // produced on CI (uploaded as an artifact by the deploy workflow)
+  // as well as locally. ['github'] reporter is CI-only — it emits
+  // annotations and a job summary that only render on GH Actions.
+  reporter: [
+    ['list'],
+    ...(process.env.CI ? [['github']] : []),
+    ['monocart-reporter', {
+      name: 'my-weight coverage',
+      outputFile: './coverage-reports/report.html',
+      coverage: {
+        // All specs goto the pre-inlined `.test-built.html` (see
+        // fixtures.js). That single source path collects every
+        // tests's coverage — including the logo functions, which
+        // only run when the SVG is present at script-load.
+        entryFilter: (entry) => /public\/\.test-built\.html$/.test(entry.url || ''),
+        sourceFilter: (sourcePath) => /public\/\.test-built\.html$/.test(sourcePath),
+        outputDir: './coverage-reports/coverage',
+        reports: ['v8', 'console-summary', 'lcov', 'json-summary'],
+      },
+    }],
+  ],
   // Single chromium project is enough; webkit / firefox add cost without
   // catching anything different for these pure-function checks.
   projects: [
