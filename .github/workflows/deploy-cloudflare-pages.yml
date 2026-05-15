@@ -68,7 +68,7 @@ jobs:
 
       - name: Run pure-function tests
         working-directory: tests
-        run: npx playwright test
+        run: npx playwright test --project=unit
 
       # Coverage HTML is uploaded so users without a local dev env
       # can browse the per-file line/branch report straight from the
@@ -207,3 +207,17 @@ jobs:
               || { echo "::error::Asset $asset failed to load"; exit 1; }
           done
           echo "Smoke test passed"
+
+      # The curl smoke above only confirms the bytes serve. This step
+      # opens the deployed URL in a real headless Chromium, waits for
+      # the auth section to appear (proving gapi + gis loaded, the
+      # inline script ran to completion, and showSection('auth')
+      # fired), and asserts no console errors / pageerrors fired.
+      # Catches deploy regressions the mocked unit suite can't:
+      # CSP changes blocking inline scripts, CDN moves, GIS/gapi API
+      # surface changes, Tailwind class regressions, etc.
+      - name: Post-deploy boot check (Playwright)
+        working-directory: tests
+        env:
+          SMOKE_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: npx playwright test --project=smoke

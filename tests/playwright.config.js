@@ -40,9 +40,25 @@ export default defineConfig({
       },
     }],
   ],
-  // Single chromium project is enough; webkit / firefox add cost without
-  // catching anything different for these pure-function checks.
+  // Two projects:
+  //   - `unit` runs the mocked Drive / GIS suite against the local
+  //     pre-inlined .test-built.html (everything except smoke.spec.js).
+  //   - `smoke` runs only smoke.spec.js, which hits a live deployed
+  //     URL from `SMOKE_URL` and is invoked by the deploy workflow
+  //     after a successful deploy.
+  // The deploy workflow restricts each step to its own project so the
+  // pre-deploy run doesn't try to reach a (nonexistent) SMOKE_URL and
+  // the post-deploy run doesn't re-execute the offline unit suite.
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
+    {
+      name: 'unit',
+      testIgnore: ['**/smoke.spec.js'],
+      use: { browserName: 'chromium' },
+    },
+    {
+      name: 'smoke',
+      testMatch: ['**/smoke.spec.js'],
+      use: { browserName: 'chromium' },
+    },
   ],
 });
