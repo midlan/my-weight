@@ -176,6 +176,26 @@ test.beforeEach(async ({ page, context }) => {
   // triggering the action.
   page.on('dialog', d => d.accept().catch(() => {}));
   await page.goto(PAGE_URL);
+  // Tailwind isn't loaded from the source tree (built in CI), so
+  // .hidden has no effect by default. Inject the rule manually so
+  // toBeHidden() assertions on class="hidden" elements work.
+  await page.addStyleTag({ content: '.hidden { display: none !important; }' });
+});
+
+test('initial load produces no JS errors (resource-fetch failures from blocked CDNs ignored)', async ({ page, context }) => {
+  const errors = [];
+  // Resource-load failures are expected — we block external scripts
+  // and the source tree doesn't have tailwind.css. Real JS errors
+  // (ReferenceError, TypeError, etc.) come through with different
+  // shapes and the "Failed to load resource" filter lets them through.
+  const isResourceLoad = (text) => /^Failed to load resource:/.test(text);
+  page.on('console', m => {
+    if (m.type() === 'error' && !isResourceLoad(m.text())) errors.push(m.text());
+  });
+  page.on('pageerror', e => errors.push(e.message));
+  await page.reload({ waitUntil: 'load' });
+  await expect(page.locator('#auth-section')).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 test('initial load with no Drive file → auth section visible, login button shown', async ({ page }) => {
@@ -718,6 +738,151 @@ test('unrecognized data → user cancels recovery → loading section stays, fil
   const patchCalls = await page.evaluate(() => __mock.calls.filter(c =>
     c.type === 'upload.fetch' && c.method === 'PATCH'));
   expect(patchCalls).toEqual([]);
+});
+
+test('theme buttons toggle the dark class on <html> and persist to settings', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {}, settings: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  await page.locator('#menu-btn').click();
+  await page.locator('[data-theme="dark"]').click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+
+  await page.locator('[data-theme="light"]').click();
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
+
+  // settings.theme should now be "light" in memory; after the 500ms
+  // debounced save the on-"server" file picks it up too.
+  await page.waitForFunction((id) => {
+    try {
+      const body = JSON.parse(__mock.files[id].body);
+      return body.settings && body.settings.theme === 'light';
+    } catch { return false; }
+  }, fileId, { timeout: 3000 });
+
+  // Switching back to "system" should DELETE the theme key (so a fresh
+  // device with a different OS preference doesn't inherit our choice).
+  await page.locator('[data-theme="system"]').click();
+  await page.waitForFunction((id) => {
+    try {
+      const body = JSON.parse(__mock.files[id].body);
+      return body.settings && !('theme' in body.settings);
+    } catch { return false; }
+  }, fileId, { timeout: 3000 });
+});
+
+test('About dialog opens with build metadata (local-build placeholders)', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: {
+      '2026-05-13T07:00:00.000Z': { weight: 72.5 },
+      '2026-05-14T07:00:00.000Z': { weight: 72.3 },
+    },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => { alertMessage = d.message(); d.accept(); });
+
+  await page.locator('#menu-btn').click();
+  await page.locator('#about-btn').click();
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Moje váha');
+  expect(alertMessage).toContain('Schéma dat: v2');
+  expect(alertMessage).toContain('Počet záznamů: 2');
+  // Source tree → __BUILD_* placeholders survive → showAbout labels
+  // them as the local-dev variant.
+  expect(alertMessage).toContain('lokální sestavení');
+  expect(alertMessage).toContain('github.com/midlan/my-weight');
+});
+
+test('privacy modal opens from the menu and closes via X button', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  await page.locator('#menu-btn').click();
+  await page.locator('#privacy-menu-btn').click();
+  // file:// fetch for "privacy" will fail and we'll see the fallback
+  // text — but the overlay itself should be visible either way.
+  await expect(page.locator('#privacy-overlay')).toBeVisible();
+
+  await page.locator('#privacy-close-btn').click();
+  await expect(page.locator('#privacy-overlay')).toBeHidden();
+});
+
+test('install button appears after beforeinstallprompt, and disappears after click', async ({ page }) => {
+  // Pre-set the install-prompted flag so the first-login confirm
+  // doesn't fire and steal our dialog handler.
+  await page.evaluate(() => {
+    localStorage.setItem('my-weight:install-prompted', new Date().toISOString());
+    __mock.addFile('weight_records.json', JSON.stringify({ version: 2, records: {} }));
+  });
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // Fire the synthetic beforeinstallprompt event with stubbed prompt().
+  await page.evaluate(() => {
+    const e = new Event('beforeinstallprompt');
+    e.preventDefault = () => {};
+    e.prompt = () => Promise.resolve();
+    e.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'web' });
+    window.dispatchEvent(e);
+  });
+
+  // Button should now be visible inside the menu.
+  await page.locator('#menu-btn').click();
+  await expect(page.locator('#install-btn')).toBeVisible();
+
+  // Click it — menu closes, button hides (event consumed).
+  await page.locator('#install-btn').click();
+  await expect(page.locator('#install-btn')).toBeHidden();
+});
+
+test('first-login install confirm fires once when prompt event + no prior prompt', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+
+  // Capture the confirm before the records-load triggers it.
+  page.removeAllListeners('dialog');
+  const confirms = [];
+  page.on('dialog', d => {
+    if (d.type() === 'confirm') {
+      confirms.push(d.message());
+      d.dismiss();
+    } else {
+      d.accept();
+    }
+  });
+
+  // Fire the synthetic beforeinstallprompt right before login so the
+  // event handler stores `deferredInstallPrompt` ahead of loadRecords.
+  await page.evaluate(() => {
+    const e = new Event('beforeinstallprompt');
+    e.preventDefault = () => {};
+    e.prompt = () => Promise.resolve();
+    e.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'web' });
+    window.dispatchEvent(e);
+  });
+
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  await expect.poll(() => confirms.length, { timeout: 3000 }).toBeGreaterThan(0);
+  expect(confirms[0]).toContain('plochu');
+
+  // The install-prompted flag should be persisted to localStorage so
+  // we don't ask again on the next login.
+  const flag = await page.evaluate(() => localStorage.getItem('my-weight:install-prompted'));
+  expect(flag).toBeTruthy();
 });
 
 test('logout clears state and shows auth section', async ({ page }) => {

@@ -13,6 +13,23 @@ test.beforeEach(async ({ page, context }) => {
   await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded' });
 });
 
+test.describe('toLocalInputValue() / toDateInputValue()', () => {
+  test('toLocalInputValue formats a Date as "YYYY-MM-DDTHH:MM" in local time', async ({ page }) => {
+    const out = await page.evaluate(() => toLocalInputValue(new Date(2026, 4, 13, 7, 30)));
+    expect(out).toBe('2026-05-13T07:30');
+  });
+
+  test('toLocalInputValue pads single-digit components', async ({ page }) => {
+    const out = await page.evaluate(() => toLocalInputValue(new Date(2026, 0, 1, 0, 5)));
+    expect(out).toBe('2026-01-01T00:05');
+  });
+
+  test('toDateInputValue formats a Date as "YYYY-MM-DD" in local time', async ({ page }) => {
+    const out = await page.evaluate(() => toDateInputValue(new Date(2026, 4, 13, 23, 59)));
+    expect(out).toBe('2026-05-13');
+  });
+});
+
 test.describe('formatDateTime()', () => {
   // The Playwright config pins the test browser to cs-CZ, so these
   // assertions reflect Czech-locale Intl output. The function itself
