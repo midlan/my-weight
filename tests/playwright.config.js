@@ -57,7 +57,7 @@ export default defineConfig({
     ...['chromium', 'webkit', 'firefox'].flatMap(browserName => [
       {
         name: `unit-${browserName}`,
-        testIgnore: ['**/smoke.spec.js'],
+        testIgnore: ['**/smoke.spec.js', '**/a11y.spec.js'],
         use: { browserName },
       },
       {
@@ -66,5 +66,13 @@ export default defineConfig({
         use: { browserName },
       },
     ]),
+    // a11y is chromium-only — axe runs against the DOM, results don't
+    // vary by engine, so running it three times would just multiply
+    // CI minutes without catching anything different.
+    {
+      name: 'a11y',
+      testMatch: ['**/a11y.spec.js'],
+      use: { browserName: 'chromium' },
+    },
   ],
 });

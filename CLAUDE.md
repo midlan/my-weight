@@ -103,6 +103,12 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
     401 / silent-reauth / quota / 404 / latency scenarios and
     assert what was called. Real Google hosts are aborted via
     `context.route` so nothing escapes.
+  - `tests/a11y.spec.js` — `@axe-core/playwright` WCAG 2.0 / 2.1 AA
+    scan against auth section, app section (with mock records), and
+    menu overlay. Drives each state directly via top-level functions
+    (`showSection`, `renderRecords`) instead of going through auth,
+    so axe scans a deterministic DOM. Chromium-only (a11y violations
+    are DOM-content checks; cross-browser would be duplicate work).
   - `tests/smoke.spec.js` — post-deploy boot check against the live
     deployed URL. Opens `SMOKE_URL` in a real headless browser,
     waits for `#auth-section` to appear (so gapi + gis loaded, the

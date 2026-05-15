@@ -71,6 +71,14 @@ jobs:
         working-directory: tests
         run: npx playwright test --project=unit-chromium --project=unit-webkit --project=unit-firefox
 
+      # axe-core WCAG 2.0 / 2.1 AA scan against auth section, app
+      # section, and menu overlay. Chromium-only (a11y violations
+      # are DOM-content checks and don't vary by engine), runs
+      # before deploy so a regression fails the workflow.
+      - name: Run accessibility scan
+        working-directory: tests
+        run: npx playwright test --project=a11y
+
       # Coverage HTML is uploaded so users without a local dev env
       # can browse the per-file line/branch report straight from the
       # Actions run page. `if: always()` so a failing test still
