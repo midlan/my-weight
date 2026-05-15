@@ -18,7 +18,28 @@ export default defineConfig({
     // app's primary audience.
     locale: 'cs-CZ',
   },
-  reporter: process.env.CI ? [['list'], ['github']] : 'list',
+  reporter: process.env.CI
+    ? [['list'], ['github']]
+    : [
+        ['list'],
+        ['monocart-reporter', {
+          name: 'my-weight coverage',
+          outputFile: './coverage-reports/report.html',
+          coverage: {
+            // Only count coverage attributed to the file:// load of
+            // public/index.html. logo.spec.js's page.setContent
+            // exercises the same code but V8 attributes it to a
+            // separate "blank" source — including it would
+            // double-count and drag the headline down. Logo
+            // coverage shows up via the other specs that hit the
+            // SAME functions on initial paint.
+            entryFilter: (entry) => /public\/index\.html$/.test(entry.url || ''),
+            sourceFilter: (sourcePath) => /public\/index\.html$/.test(sourcePath),
+            outputDir: './coverage-reports/coverage',
+            reports: ['v8', 'console-summary', 'lcov', 'json-summary'],
+          },
+        }],
+      ],
   // Single chromium project is enough; webkit / firefox add cost without
   // catching anything different for these pure-function checks.
   projects: [

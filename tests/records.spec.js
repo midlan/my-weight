@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 

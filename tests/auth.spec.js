@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
@@ -18,6 +18,10 @@ const PAGE_URL = pathToFileURL(path.join(__dirname, '..', 'public', 'index.html'
 //   __mock.forceNextGetError    — one-shot { status, message } for
 //                                  drive.files.get (consumed on the next call)
 //   __mock.forceNextFetchError  — one-shot for upload fetch (PATCH/POST)
+//                                  shape: { status, message?, reason? }
+//   __mock.forceNextDeleteError — one-shot for drive.files.delete
+//                                  same shape; lets wipe-error tests
+//                                  exercise the gapi-throw path
 const MOCK_INIT = `
 (() => {
   window.__mock = {
@@ -28,6 +32,7 @@ const MOCK_INIT = `
     silentReauthSucceeds: true,
     forceNextGetError: null,
     forceNextFetchError: null,
+    forceNextDeleteError: null,
     calls: [],
     addFile(name, body) {
       const id = 'file' + (this.nextFileId++);
@@ -52,8 +57,26 @@ const MOCK_INIT = `
   function forcedErr(spec) {
     const err = new Error(spec.message || 'forced');
     err.status = spec.status;
-    err.result = { error: { code: spec.status, message: err.message } };
+    err.result = {
+      error: {
+        code: spec.status,
+        message: err.message,
+        // Drive's structured error shape — describeDriveError reads
+        // errors[0].reason to map e.g. storageQuotaExceeded to a
+        // friendly Czech message.
+        errors: spec.reason ? [{ reason: spec.reason }] : undefined,
+      },
+    };
     return err;
+  }
+  function forcedBody(spec) {
+    return {
+      error: {
+        code: spec.status,
+        message: spec.message || '',
+        errors: spec.reason ? [{ reason: spec.reason }] : undefined,
+      },
+    };
   }
 
   window.google = {
@@ -120,6 +143,12 @@ const MOCK_INIT = `
           },
           delete: async ({ fileId } = {}) => {
             window.__mock.calls.push({ type: 'drive.files.delete', fileId });
+            if (window.__mock.forceNextDeleteError) {
+              const f = window.__mock.forceNextDeleteError;
+              window.__mock.forceNextDeleteError = null;
+              if (f.status === 401) window.__mock.tokenIsValid = false;
+              throw forcedErr(f);
+            }
             if (!window.__mock.tokenIsValid) throw authError();
             delete window.__mock.files[fileId];
             return {};
@@ -139,7 +168,10 @@ const MOCK_INIT = `
         const f = window.__mock.forceNextFetchError;
         window.__mock.forceNextFetchError = null;
         if (f.status === 401) window.__mock.tokenIsValid = false;
-        return new Response(JSON.stringify({ error: { code: f.status, message: f.message || '' } }), { status: f.status });
+        return new Response(JSON.stringify(forcedBody(f)), {
+          status: f.status,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
       if (!window.__mock.tokenIsValid) {
         return new Response(JSON.stringify({ error: { code: 401 } }), { status: 401 });
@@ -1089,6 +1121,204 @@ test('editingRowHasChanges + restoreEditingDraft: track and restore typed edits'
   }));
   await expect(row.locator('input[type="number"]')).toHaveValue('72.5');
   expect(await page.evaluate(() => editingRowHasChanges())).toBe(false);
+});
+
+test('saveRecord with 403 storageQuotaExceeded → friendly "úložiště je plné" alert', async ({ page }) => {
+  // No file yet — first save creates the file (POST). The 403 lands
+  // on the multipart POST.
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#auth-section')).toBeHidden();
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => { alertMessage = d.message(); d.accept(); });
+
+  await page.evaluate(() => {
+    __mock.forceNextFetchError = { status: 403, reason: 'storageQuotaExceeded', message: 'Quota exceeded' };
+  });
+
+  await page.locator('#weight').fill('72.5');
+  await page.locator('#weight-form button[type=submit]').click();
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Vaše Google úložiště je plné');
+
+  // No file got created on the "server".
+  const fileExists = await page.evaluate(() => !!__mock.getFile('weight_records.json'));
+  expect(fileExists).toBe(false);
+});
+
+test('saveRecord with generic 500 → "Chyba při ukládání" alert + record reverted', async ({ page }) => {
+  // Existing file — the failed PATCH is followed by fetchFromDrive in
+  // the catch which restores the in-memory state from the unchanged
+  // file body.
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => { alertMessage = d.message(); d.accept(); });
+
+  await page.evaluate(() => { __mock.forceNextFetchError = { status: 500, message: 'Internal Error' }; });
+
+  await page.locator('#weight').fill('73.0');
+  await page.locator('#weight-form button[type=submit]').click();
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Chyba při ukládání');
+  expect(alertMessage).toContain('Internal Error');
+
+  // The in-memory record set was reverted to the on-"server" content.
+  const count = await page.evaluate(() => recordsCount());
+  expect(count).toBe(1);
+});
+
+test('saveEdit upload 500 → alert + edit row keeps the typed values for retry', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => { alertMessage = d.message(); d.accept(); });
+
+  const row = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  await row.locator('button[title="Upravit"]').click();
+  await page.evaluate(() => { __mock.forceNextFetchError = { status: 500, message: 'kaput' }; });
+  await row.locator('input[type="number"]').fill('73.0');
+  await row.locator('button[title="Uložit"]').click();
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Chyba při ukládání');
+  // The row should still be in edit mode with the typed values
+  // preserved (so the user can retry).
+  await expect(row.locator('input[type="number"]')).toHaveValue('73.0');
+});
+
+test('deleteRecord upload 500 → alert + record refetched back into memory', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: {
+      '2026-05-13T07:00:00.000Z': { weight: 72.5 },
+      '2026-05-14T07:00:00.000Z': { weight: 72.3 },
+    },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => {
+    if (d.type() === 'confirm') d.accept();
+    else { alertMessage = d.message(); d.accept(); }
+  });
+
+  await page.evaluate(() => { __mock.forceNextFetchError = { status: 500, message: 'boom' }; });
+  await page.locator('li[data-key="2026-05-13T07:00:00.000Z"] button[title="Smazat"]').click();
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Chyba při mazání');
+
+  // After the failed PATCH, the catch refetches from Drive — both
+  // records should be back in memory (and in the DOM).
+  const count = await page.evaluate(() => recordsCount());
+  expect(count).toBe(2);
+  await expect(page.locator('li[data-key="2026-05-13T07:00:00.000Z"]')).toBeVisible();
+});
+
+test('wipeAllData with 500 on drive.files.delete → "Chyba při mazání" alert, file preserved', async ({ page }) => {
+  const fileId = await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => {
+    if (d.type() === 'prompt') d.accept('smazat vše');
+    else { alertMessage = d.message(); d.accept(); }
+  });
+
+  await page.evaluate(() => { __mock.forceNextDeleteError = { status: 500, message: 'server angry' }; });
+
+  await page.locator('#menu-btn').click();
+  await page.locator('#wipe-btn').click();
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Chyba při mazání');
+  expect(alertMessage).toContain('server angry');
+
+  // File untouched on the "server".
+  const stillThere = await page.evaluate((id) => !!__mock.files[id], fileId);
+  expect(stillThere).toBe(true);
+});
+
+test('export with 500 on Drive fetch → "Chyba při exportu" alert, no download', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => { alertMessage = d.message(); d.accept(); });
+
+  // Export calls fetchFromDrive which uses gapi.client.drive.files.get
+  // for the file content. Force that to 500.
+  await page.evaluate(() => { __mock.forceNextGetError = { status: 500, message: 'boom' }; });
+
+  let downloaded = false;
+  page.on('download', () => { downloaded = true; });
+
+  await page.locator('#menu-btn').click();
+  await page.locator('#export-btn').click();
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Chyba při exportu');
+  expect(alertMessage).toContain('boom');
+
+  // Give the download event time to fire if it was going to.
+  await page.waitForTimeout(200);
+  expect(downloaded).toBe(false);
+});
+
+test('import upload 500 → "Chyba při importu" alert, no records added in memory', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  let alertMessage = '';
+  page.on('dialog', d => {
+    if (d.type() === 'confirm') d.accept();   // "Naimportovat X záznamů?"
+    else { alertMessage = d.message(); d.accept(); }
+  });
+
+  // The upload PATCH inside the import will fail.
+  await page.evaluate(() => { __mock.forceNextFetchError = { status: 500, message: 'nope' }; });
+
+  const importFile = JSON.stringify({
+    version: 2,
+    records: { '2026-05-15T07:00:00.000Z': { weight: 70.0 } },
+  });
+  await page.locator('#import-input').setInputFiles({
+    name: 'data.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(importFile),
+  });
+
+  await expect.poll(() => alertMessage, { timeout: 3000 }).toContain('Chyba při importu');
+
+  // The catch refetches Drive (which still has empty records), so
+  // in-memory state ends up at 0 — the imported record didn't stick.
+  const count = await page.evaluate(() => recordsCount());
+  expect(count).toBe(0);
 });
 
 test('logout clears state and shows auth section', async ({ page }) => {
