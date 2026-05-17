@@ -119,6 +119,9 @@ jobs:
             public/icon-512.png
             public/apple-touch-icon.png
             public/icon-maskable.svg
+            public/icon-maskable-192.png
+            public/icon-maskable-512.png
+            public/icon-maskable-1024.png
           key: icons-${{ hashFiles('public/icon.svg', '.github/workflows/deploy-cloudflare-pages.yml') }}
 
       - name: Generate icon files from icon.svg
@@ -145,14 +148,16 @@ jobs:
           # rectangle would need 196 per side; the rounded corners
           # buy back ~40 units.
           #
-          # Bleed is transparent — no background rect injection. Earlier
-          # versions added an opaque white (or 1%-opacity) rect to
-          # defeat Chrome's purpose:"any" alpha-trim heuristic, but the
-          # cache-bust query on the manifest src wasn't in place yet,
-          # so the on-phone tests were inconclusive (the device kept
-          # showing the old WebAPK-cached icon). Now that the manifest
-          # URL changes on every icon edit, we can retest the plain
-          # transparent-padding behavior cleanly.
+          # Bleed is transparent — no background rect injection.
+          # icon-maskable.svg is the intermediate vector source; the
+          # PNGs below are what the manifest actually ships, because
+          # Chrome's WebAPK installer trims fully-transparent safe-zone
+          # padding from purpose:"any" SVG icons (confirmed on-device
+          # after the manifest cache-bust let us see a clean test).
+          # Pre-rasterized PNGs hopefully reach the WebAPK install
+          # snapshot without that re-bounding-box step. Sizes: 192
+          # and 512 for the standard Chrome icon picks, 1024 for
+          # high-DPI splash rendering.
           cp public/icon.svg public/icon-maskable.svg
           perl -i -pe '
             $count += s/viewBox="0 0 512 512"/viewBox="-156 -156 824 824"/g;
@@ -160,6 +165,9 @@ jobs:
               die "expected 1 viewBox match in icon-maskable.svg, found $count\n" if $count != 1;
             }
           ' public/icon-maskable.svg
+          rsvg-convert -w 1024 -h 1024 public/icon-maskable.svg -o public/icon-maskable-1024.png
+          rsvg-convert -w 512  -h 512  public/icon-maskable.svg -o public/icon-maskable-512.png
+          rsvg-convert -w 192  -h 192  public/icon-maskable.svg -o public/icon-maskable-192.png
 
       # Compile Tailwind utilities used in public/*.html into a single
       # minified stylesheet. This replaces the @tailwindcss/browser CDN
@@ -220,7 +228,7 @@ jobs:
           perl -i -pe '
             $count += s/__ICON_HASH__/'"$short"'/g;
             END {
-              die "expected 1 __ICON_HASH__, found $count\n" if $count != 1;
+              die "expected at least 1 __ICON_HASH__, found $count\n" if $count < 1;
             }
           ' manifest.webmanifest
 
@@ -271,10 +279,10 @@ jobs:
             echo "::error::__ICON_HASH__ placeholder survived in deployed manifest"
             exit 1
           fi
-          grep -qE '"src":[[:space:]]*"/icon-maskable\.svg\?v=[a-f0-9]{8}"' <<< "$manifest" \
+          grep -qE '"src":[[:space:]]*"/icon-maskable-[0-9]+\.png\?v=[a-f0-9]{8}"' <<< "$manifest" \
             || { echo "::error::manifest icon src missing the ?v=<hash> cache-bust"; exit 1; }
 
-          for asset in tailwind.css icon.svg icon-maskable.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
+          for asset in tailwind.css icon.svg icon-maskable.svg favicon.ico icon-192.png icon-512.png icon-maskable-192.png icon-maskable-512.png icon-maskable-1024.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
             echo "  - $asset"
             curl -fsSL -o /dev/null "$URL/$asset" \
               || { echo "::error::Asset $asset failed to load"; exit 1; }
