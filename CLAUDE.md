@@ -72,11 +72,16 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   hash of `icon.svg`, so it only re-runs when the SVG source
   changes. All generated files are gitignored. `icon-maskable.svg`
   is the same SVG re-emitted with `viewBox="-156 -156 824 824"`
-  — 156 px of transparent padding on each side so the rounded
-  square (side 512, corner radius 80, circumscribed-circle radius
+  — 156 px of padding on each side so the rounded square
+  (side 512, corner radius 80, circumscribed-circle radius
   176√2 + 80 ≈ 328.9) fits inside Android's 80%-diameter maskable
   safe circle. Padding is minimal: a plain rectangle would need
-  196 per side, but the rounded corners buy ~40 units back.
+  196 per side, but the rounded corners buy ~40 units back. The
+  bleed area is filled with a 1%-opacity white rect (alpha ≈
+  2/255 — invisible to the eye) instead of being left transparent,
+  because Chrome's PWA installer auto-trims fully-transparent
+  padding from a `purpose:"any"` icon and would strip the safe
+  zone we just added.
 - `functions/_middleware.js` — Cloudflare Pages edge middleware
   that runs before static assets are served. Today's only job is
   301-redirecting the bare CF Pages aliases (`my-weight.pages.dev`,

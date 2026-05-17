@@ -143,14 +143,26 @@ jobs:
           # up to 824 to leave ~0.6 unit antialiasing margin. Padding
           # is therefore (824 - 512) / 2 = 156 per side. A plain
           # rectangle would need 196 per side; the rounded corners
-          # buy back ~40 units. Bleed is transparent — the OS mask
-          # cuts its own shape and the icon's own rounded corners
-          # remain the visible silhouette inside it.
+          # buy back ~40 units.
+          #
+          # A near-transparent (1% opacity) white rect is laid down
+          # first across the entire extended viewBox. Without it,
+          # Chrome's PWA install path trims any fully-transparent
+          # padding from a purpose:"any" icon — losing the safe-zone
+          # margin we just added. 1% opacity is invisible to the eye
+          # (8-bit alpha ≈ 2/255) but every pixel reads as non-zero
+          # alpha, so the trim heuristic keeps the padding intact.
           cp public/icon.svg public/icon-maskable.svg
           perl -i -pe '
             $count += s/viewBox="0 0 512 512"/viewBox="-156 -156 824 824"/g;
             END {
               die "expected 1 viewBox match in icon-maskable.svg, found $count\n" if $count != 1;
+            }
+          ' public/icon-maskable.svg
+          perl -0777 -i -pe '
+            $count += s|</defs>|</defs>\n  <rect x="-156" y="-156" width="824" height="824" fill="white" opacity="0.01"/>|g;
+            END {
+              die "expected 1 </defs> match in icon-maskable.svg, found $count\n" if $count != 1;
             }
           ' public/icon-maskable.svg
 
