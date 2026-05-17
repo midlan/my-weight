@@ -131,6 +131,28 @@ jobs:
           rsvg-convert -w 180 -h 180 public/icon.svg -o public/apple-touch-icon.png
           python3 -c "from PIL import Image; Image.open('public/icon-512.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
 
+          # DIAGNOSTIC: crop the PWA PNGs (icon-192, icon-512) to an
+          # inscribed circle so they match Facebook's icon shape exactly.
+          # Hypothesis: Samsung's launcher classifies icons by how much
+          # corner area is transparent; FB's near-circle source gets a
+          # default white backdrop applied, while our mild-rounded-rect
+          # source gets aggressive masking that clips the corners.
+          # Applies AFTER favicon.ico is built so the in-browser favicon
+          # keeps the original rounded-rect shape; only the manifest
+          # PNGs become circles. The apple-touch-icon is also left
+          # untouched (iOS adaptive icons behave differently).
+          python3 - <<'PY'
+          from PIL import Image, ImageDraw, ImageChops
+          for path in ('public/icon-192.png', 'public/icon-512.png'):
+              img = Image.open(path).convert('RGBA')
+              w, h = img.size
+              mask = Image.new('L', (w, h), 0)
+              ImageDraw.Draw(mask).ellipse((0, 0, w - 1, h - 1), fill=255)
+              new_alpha = ImageChops.multiply(img.split()[3], mask)
+              img.putalpha(new_alpha)
+              img.save(path)
+          PY
+
       # Compile Tailwind utilities used in public/*.html into a single
       # minified stylesheet. This replaces the @tailwindcss/browser CDN
       # runtime which caused a flash of unstyled content on hard reload
