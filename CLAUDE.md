@@ -26,7 +26,16 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
     `index.html`; declares the app name, `display: standalone`,
     theme/background colors, and the icon set. Lets mobile users
     "Add to Home Screen" and get a launcher icon that opens
-    without browser chrome.
+    without browser chrome. The icon `src` carries a literal
+    `__ICON_HASH__` placeholder in the source manifest; the
+    deploy workflow substitutes it with the first 8 hex chars of
+    `hashFiles('public/icon.svg', '.github/workflows/deploy-cloudflare-pages.yml')`
+    — same inputs as the icons-cache key — and the post-deploy
+    smoke test fails if the placeholder survives. The query
+    string only changes when the icon source or its build pipeline
+    changes, so unrelated commits don't churn the WebAPK install
+    snapshot; when it does change, Chrome re-fetches the icon
+    because the URL string is now different from the cached one.
   - `public/sw.js` — minimal service worker. Registered from
     `window.onload`; its only job is to exist so Chrome's
     install prompt criterion is satisfied. No caching, no

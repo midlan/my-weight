@@ -217,6 +217,26 @@ jobs:
             }
           ' index.html
 
+      # Cache-bust the maskable icon URL in the manifest. The hash is
+      # derived from public/icon.svg and the workflow file itself —
+      # exactly the same inputs as the icons-cache key, so the manifest
+      # src changes iff the cached raster set changes. Without this,
+      # Chrome's WebAPK would keep serving the old icon from its install
+      # snapshot when we ship a visual change — re-fetch only happens
+      # when the src URL string actually differs.
+      - name: Inject icon cache-bust into manifest
+        working-directory: public
+        env:
+          ICON_HASH: ${{ hashFiles('public/icon.svg', '.github/workflows/deploy-cloudflare-pages.yml') }}
+        run: |
+          short=${ICON_HASH:0:8}
+          perl -i -pe '
+            $count += s/__ICON_HASH__/'"$short"'/g;
+            END {
+              die "expected 1 __ICON_HASH__, found $count\n" if $count != 1;
+            }
+          ' manifest.webmanifest
+
       - name: Deploy to Cloudflare Pages
         id: deploy
         uses: cloudflare/wrangler-action@v3
@@ -258,6 +278,14 @@ jobs:
           fi
           grep -qE '<svg[^>]+id="logo"' <<< "$html" \
             || { echo "::error::Inlined <svg ... id=\"logo\"> not found in deployed HTML"; exit 1; }
+
+          manifest=$(curl -fsSL "$URL/manifest.webmanifest")
+          if grep -q '__ICON_HASH__' <<< "$manifest"; then
+            echo "::error::__ICON_HASH__ placeholder survived in deployed manifest"
+            exit 1
+          fi
+          grep -qE '"src":[[:space:]]*"/icon-maskable\.svg\?v=[a-f0-9]{8}"' <<< "$manifest" \
+            || { echo "::error::manifest icon src missing the ?v=<hash> cache-bust"; exit 1; }
 
           for asset in tailwind.css icon.svg icon-maskable.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
             echo "  - $asset"
