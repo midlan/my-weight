@@ -76,39 +76,36 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   `CLOUDFLARE_API_TOKEN` (with Pages › Edit) and
   `CLOUDFLARE_ACCOUNT_ID`. Also generates the icon asset set
   (`favicon.ico`, `icon-192.png`, `icon-512.png`,
-  `apple-touch-icon.png`) from `public/icon.svg` before deploy;
-  the step is cached on the hash of `icon.svg` plus the workflow
-  file, so it re-runs when the source SVG or the generation logic
-  changes. All generated files are gitignored.
+  `apple-touch-icon.png`, `icon-maskable.svg`,
+  `icon-maskable-192.png`, `icon-maskable-512.png`) from
+  `public/icon.svg` before deploy; the step is cached on the
+  hash of `icon.svg` plus the workflow file, so it re-runs when
+  the source SVG or the generation logic changes. All generated
+  files are gitignored.
 
-  Two rasterization paths run in CI:
-  - **`favicon.ico`** and **`apple-touch-icon.png`** are rendered
-    from `icon.svg` directly (no padding). Favicon needs to fill
-    the browser tab; iOS adaptive icons handle their own padding.
-  - **`icon-192.png`** and **`icon-512.png`** (the manifest PWA
-    icons, no `purpose` = defaults to `"any"`) are rendered from
-    a padded variant: `icon.svg` with its viewBox extended to
-    `-156 -156 824 824` (156 px of transparent margin per side).
-    The expanded canvas inscribes the rounded square (side 512,
-    corner radius 80) inside Android's 80%-diameter maskable
-    safe circle — minimum padding mathematically possible since
-    a plain rectangle would need 196 per side and the rounded
-    corners save ~40 units.
-
-    The reason for the padding is a Samsung One UI launcher
-    heuristic discovered by pixel-comparing our icon against
-    Facebook's PWA icon: One UI classifies icons by transparent-
-    corner area. Edge-to-edge sources (first opaque on diagonal
-    at 23/192 for our unpadded rounded rect) are treated as
-    adaptive-icon foregrounds and clipped to the launcher's mask
-    shape, eating the corners. Sources with substantial transparent
-    corner area (FB's near-circle has first opaque on diagonal at
-    75/192) are treated as legacy icons — placed centered on a
-    default white circle backdrop, with the icon's own shape
-    preserved. The 156-px padded variant gives our PNGs FB-like
-    geometry without changing the visible icon shape, so the
-    launcher applies the legacy backdrop and our rounded corners
-    survive.
+  Two icon variants:
+  - **Raw** (`favicon.ico`, `icon-192.png`, `icon-512.png`,
+    `apple-touch-icon.png`) — rasterized directly from `icon.svg`,
+    no padding, edge-to-edge rounded rect. Used by the HTML
+    `<link rel="icon">` tags and the iOS apple-touch-icon. The
+    favicon and apple-touch-icon stay clean (fill the tab /
+    iOS slot).
+  - **Padded maskable** (`icon-maskable.svg`,
+    `icon-maskable-192.png`, `icon-maskable-512.png`) — rendered
+    from `icon-maskable.svg`, which is `icon.svg` with the
+    viewBox extended to `-156 -156 824 824`. 156 px of transparent
+    margin inscribes the rounded square (side 512, corner radius
+    80, circumscribed-circle radius 176√2 + 80 ≈ 328.9) inside
+    Android's 80%-diameter maskable safe circle. A plain rectangle
+    would need 196 per side; the rounded corners save ~40 units.
+    All three are referenced in the PWA manifest with
+    `purpose: "maskable"` — Chrome respects the safe-zone padding
+    instead of trimming it (which it does for `purpose: "any"`),
+    Samsung's launcher applies its adaptive shape mask around the
+    safe zone leaving the rounded corners intact, and the PWA
+    splash screen renders the same padded source with visible
+    empty space around the icon (accepted trade-off — a clean
+    launcher icon at the cost of a slightly padded splash).
 - `functions/_middleware.js` — Cloudflare Pages edge middleware
   that runs before static assets are served. Today's only job is
   301-redirecting the bare CF Pages aliases (`my-weight.pages.dev`,

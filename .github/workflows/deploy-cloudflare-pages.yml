@@ -118,6 +118,9 @@ jobs:
             public/icon-192.png
             public/icon-512.png
             public/apple-touch-icon.png
+            public/icon-maskable.svg
+            public/icon-maskable-192.png
+            public/icon-maskable-512.png
           key: icons-${{ hashFiles('public/icon.svg', '.github/workflows/deploy-cloudflare-pages.yml') }}
 
       - name: Generate icon files from icon.svg
@@ -127,71 +130,41 @@ jobs:
           sudo apt-get install -y --no-install-recommends librsvg2-bin
           pip install --quiet Pillow
 
-          # favicon.ico and apple-touch-icon.png are rasterized from
-          # icon.svg directly (no padding) — favicon needs to fill the
-          # browser tab, iOS adaptive icons handle their own padding.
+          # Raw rasters from icon.svg (no padding) — favicon needs to
+          # fill the browser tab, the HTML <link rel=icon> entries
+          # point at icon-192/icon-512, and iOS adaptive icons handle
+          # their own padding via apple-touch-icon.
+          rsvg-convert -w 512 -h 512 public/icon.svg -o public/icon-512.png
+          rsvg-convert -w 192 -h 192 public/icon.svg -o public/icon-192.png
           rsvg-convert -w 180 -h 180 public/icon.svg -o public/apple-touch-icon.png
-          rsvg-convert -w 512 -h 512 public/icon.svg -o /tmp/icon-fav.png
-          python3 -c "from PIL import Image; Image.open('/tmp/icon-fav.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
+          python3 -c "from PIL import Image; Image.open('public/icon-512.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
 
-          # icon-192.png and icon-512.png (the PWA manifest icons) come
-          # from a padded variant: icon.svg with the viewBox extended on
-          # all sides to (-156, -156, 824, 824) so the rounded square
-          # (side 512, corner radius 80, circumscribed-circle radius
-          # 176√2 + 80 ≈ 328.9) inscribes inside Android's 80%-diameter
-          # maskable safe circle. Padding = 156 per side (the rounded
-          # corners save ~40 units vs a plain rectangle's 196).
+          # Padded variants for the PWA manifest with purpose:"maskable".
+          # icon-maskable.svg is icon.svg with the viewBox extended to
+          # (-156, -156, 824, 824) so the rounded square (side 512,
+          # corner radius 80, circumscribed-circle radius 176√2 + 80
+          # ≈ 328.9) inscribes inside Android's 80%-diameter maskable
+          # safe circle. Padding = 156 px per side (a plain rectangle
+          # would need 196; the rounded corners save ~40 units). The
+          # PNGs are rasterized from that padded SVG.
           #
-          # Why padding instead of edge-to-edge: today's on-device
-          # diagnostic confirmed Samsung One UI classifies icons by
-          # transparent-corner area. Facebook's PWA icon (near-circle,
-          # first opaque on diagonal at 75/192) triggers the launcher's
-          # "legacy icon" backdrop path — white circle behind the icon,
-          # the icon's own shape preserved. Our edge-to-edge rounded
-          # rect (first opaque on diagonal at 23/192) was classified as
-          # "adaptive foreground" and clipped to the mask shape. With
-          # 156 px of transparent margin all round, the rasterized PNGs
-          # land closer to FB's geometry and should land in the legacy
-          # backdrop path too — without changing the icon's visible
-          # rounded-rect shape.
-          cp public/icon.svg /tmp/icon-maskable.svg
+          # With purpose:"maskable" declared, Chrome's WebAPK installer
+          # respects the safe-zone padding instead of trimming it back
+          # to the visible-content bbox — that's the spec-intended use
+          # of maskable. Samsung's launcher then renders the icon with
+          # its adaptive shape mask, and the icon's own rounded corners
+          # stay safely inside the safe circle. Splash screen will use
+          # the same padded source and show visible empty space around
+          # the icon — accepted trade-off for a clean launcher icon.
+          cp public/icon.svg public/icon-maskable.svg
           perl -i -pe '
             $count += s/viewBox="0 0 512 512"/viewBox="-156 -156 824 824"/g;
             END {
-              die "expected 1 viewBox match in /tmp/icon-maskable.svg, found $count\n" if $count != 1;
+              die "expected 1 viewBox match in public/icon-maskable.svg, found $count\n" if $count != 1;
             }
-          ' /tmp/icon-maskable.svg
-          rsvg-convert -w 512 -h 512 /tmp/icon-maskable.svg -o public/icon-512.png
-          rsvg-convert -w 192 -h 192 /tmp/icon-maskable.svg -o public/icon-192.png
-
-          # Anti-trim anchors: Chrome's WebAPK installer crops icons to
-          # the bounding box of opaque pixels before storing them in the
-          # install snapshot — confirmed on-device that the 156-px
-          # transparent safe-zone padding around our rounded rect was
-          # stripped at install time, leaving Samsung's launcher with
-          # an edge-to-edge icon to mask. To defeat the trim, drop a
-          # single opaque brand-green pixel at each of the four canvas
-          # edge midpoints. The bounding box of opaque content now
-          # spans the full canvas (rows 0 / h-1 and columns 0 / w-1
-          # each contain at least one non-transparent pixel), so
-          # there's no edge row/column to trim. The corners stay
-          # fully transparent — that's what makes Samsung's launcher
-          # classify the icon as "legacy" and apply the default white
-          # backdrop instead of the aggressive shape mask. Single
-          # pixels in a 192/512 canvas are smaller than one display
-          # pixel at typical launcher rendering, so visually invisible.
-          python3 - <<'PY'
-          from PIL import Image
-          GREEN = (29, 185, 84, 255)  # #1DB954, the icon's own brand color
-          for path in ('public/icon-192.png', 'public/icon-512.png'):
-              img = Image.open(path).convert('RGBA')
-              w, h = img.size
-              img.putpixel((w // 2, 0),     GREEN)
-              img.putpixel((0, h // 2),     GREEN)
-              img.putpixel((w - 1, h // 2), GREEN)
-              img.putpixel((w // 2, h - 1), GREEN)
-              img.save(path)
-          PY
+          ' public/icon-maskable.svg
+          rsvg-convert -w 512 -h 512 public/icon-maskable.svg -o public/icon-maskable-512.png
+          rsvg-convert -w 192 -h 192 public/icon-maskable.svg -o public/icon-maskable-192.png
 
       # Compile Tailwind utilities used in public/*.html into a single
       # minified stylesheet. This replaces the @tailwindcss/browser CDN
@@ -303,10 +276,10 @@ jobs:
             echo "::error::__ICON_HASH__ placeholder survived in deployed manifest"
             exit 1
           fi
-          grep -qE '"src":[[:space:]]*"/icon-[0-9]+\.png\?v=[a-f0-9]{8}"' <<< "$manifest" \
+          grep -qE '"src":[[:space:]]*"/[^"]+\?v=[a-f0-9]{8}"' <<< "$manifest" \
             || { echo "::error::manifest icon src missing the ?v=<hash> cache-bust"; exit 1; }
 
-          for asset in tailwind.css icon.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
+          for asset in tailwind.css icon.svg icon-maskable.svg favicon.ico icon-192.png icon-512.png icon-maskable-192.png icon-maskable-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
             echo "  - $asset"
             curl -fsSL -o /dev/null "$URL/$asset" \
               || { echo "::error::Asset $asset failed to load"; exit 1; }
