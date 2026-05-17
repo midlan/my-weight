@@ -3,10 +3,6 @@ public/favicon.ico
 public/icon-192.png
 public/icon-512.png
 public/apple-touch-icon.png
-public/icon-maskable.svg
-public/icon-maskable-192.png
-public/icon-maskable-512.png
-public/icon-maskable-1024.png
 
 # Generated from src/tailwind.css at deploy time by the CI workflow.
 public/tailwind.css

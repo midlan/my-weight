@@ -76,25 +76,17 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   `CLOUDFLARE_API_TOKEN` (with Pages › Edit) and
   `CLOUDFLARE_ACCOUNT_ID`. Also generates the icon asset set
   (`favicon.ico`, `icon-192.png`, `icon-512.png`,
-  `apple-touch-icon.png`, `icon-maskable.svg`,
-  `icon-maskable-{192,512,1024}.png`) from `public/icon.svg`
-  before deploy; the step is cached on the hash of `icon.svg`
-  plus the workflow file, so it re-runs when the source SVG or
-  the generation logic changes. All generated files are
-  gitignored. `icon-maskable.svg` is the same SVG re-emitted
-  with `viewBox="-156 -156 824 824"` — 156 px of transparent
-  padding on each side so the rounded square (side 512, corner
-  radius 80, circumscribed-circle radius 176√2 + 80 ≈ 328.9)
-  fits inside Android's 80%-diameter maskable safe circle.
-  Padding is minimal: a plain rectangle would need 196 per side,
-  but the rounded corners buy ~40 units back. The PNGs are
-  rasterized from that padded SVG and are what the manifest
-  actually ships, with `purpose: "any"`. Direct SVG with the
-  same padding was confirmed on-device to be trimmed back to
-  its visible-content bbox by Chrome's WebAPK installer; the
-  hope with PNGs is that pre-rasterized pixels (every transparent
-  pixel explicitly alpha=0 in the bitmap) reach the install
-  snapshot without that re-trim step.
+  `apple-touch-icon.png`) from `public/icon.svg` before deploy;
+  the step is cached on the hash of `icon.svg` plus the workflow
+  file, so it re-runs when the source SVG or the generation logic
+  changes. All generated files are gitignored. The manifest ships
+  two of these PNGs (192, 512) with no `purpose` (defaulting to
+  `"any"`) — same shape as Facebook's installable PWA. Earlier
+  attempts at a separate `purpose:"maskable"` icon with safe-zone
+  padding ran into Chrome's WebAPK installer trimming transparent
+  bleed on every variant we tried (SVG with extended viewBox,
+  pre-rasterized PNGs). Trusting the launcher to do something
+  reasonable with the plain icon is what FB does in production.
 - `functions/_middleware.js` — Cloudflare Pages edge middleware
   that runs before static assets are served. Today's only job is
   301-redirecting the bare CF Pages aliases (`my-weight.pages.dev`,

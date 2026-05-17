@@ -118,10 +118,6 @@ jobs:
             public/icon-192.png
             public/icon-512.png
             public/apple-touch-icon.png
-            public/icon-maskable.svg
-            public/icon-maskable-192.png
-            public/icon-maskable-512.png
-            public/icon-maskable-1024.png
           key: icons-${{ hashFiles('public/icon.svg', '.github/workflows/deploy-cloudflare-pages.yml') }}
 
       - name: Generate icon files from icon.svg
@@ -134,40 +130,6 @@ jobs:
           rsvg-convert -w 192 -h 192 public/icon.svg -o public/icon-192.png
           rsvg-convert -w 180 -h 180 public/icon.svg -o public/apple-touch-icon.png
           python3 -c "from PIL import Image; Image.open('public/icon-512.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
-
-          # icon-maskable.svg: a copy of icon.svg with the viewBox
-          # extended on all sides so the rounded-rect icon fits inside
-          # Android's maskable safe circle (diameter = 80% of canvas
-          # side). Math: the rounded square (side 512, corner radius
-          # 80) has a circumscribed-circle radius of 176*sqrt(2) + 80
-          # ≈ 328.9 — that's the distance from icon center to the
-          # midpoint of each corner arc, the farthest pixel. Solving
-          # 328.9 = 0.4 * new_side gives new_side = 822.25; we round
-          # up to 824 to leave ~0.6 unit antialiasing margin. Padding
-          # is therefore (824 - 512) / 2 = 156 per side. A plain
-          # rectangle would need 196 per side; the rounded corners
-          # buy back ~40 units.
-          #
-          # Bleed is transparent — no background rect injection.
-          # icon-maskable.svg is the intermediate vector source; the
-          # PNGs below are what the manifest actually ships, because
-          # Chrome's WebAPK installer trims fully-transparent safe-zone
-          # padding from purpose:"any" SVG icons (confirmed on-device
-          # after the manifest cache-bust let us see a clean test).
-          # Pre-rasterized PNGs hopefully reach the WebAPK install
-          # snapshot without that re-bounding-box step. Sizes: 192
-          # and 512 for the standard Chrome icon picks, 1024 for
-          # high-DPI splash rendering.
-          cp public/icon.svg public/icon-maskable.svg
-          perl -i -pe '
-            $count += s/viewBox="0 0 512 512"/viewBox="-156 -156 824 824"/g;
-            END {
-              die "expected 1 viewBox match in icon-maskable.svg, found $count\n" if $count != 1;
-            }
-          ' public/icon-maskable.svg
-          rsvg-convert -w 1024 -h 1024 public/icon-maskable.svg -o public/icon-maskable-1024.png
-          rsvg-convert -w 512  -h 512  public/icon-maskable.svg -o public/icon-maskable-512.png
-          rsvg-convert -w 192  -h 192  public/icon-maskable.svg -o public/icon-maskable-192.png
 
       # Compile Tailwind utilities used in public/*.html into a single
       # minified stylesheet. This replaces the @tailwindcss/browser CDN
@@ -279,10 +241,10 @@ jobs:
             echo "::error::__ICON_HASH__ placeholder survived in deployed manifest"
             exit 1
           fi
-          grep -qE '"src":[[:space:]]*"/icon-maskable-[0-9]+\.png\?v=[a-f0-9]{8}"' <<< "$manifest" \
+          grep -qE '"src":[[:space:]]*"/icon-[0-9]+\.png\?v=[a-f0-9]{8}"' <<< "$manifest" \
             || { echo "::error::manifest icon src missing the ?v=<hash> cache-bust"; exit 1; }
 
-          for asset in tailwind.css icon.svg icon-maskable.svg favicon.ico icon-192.png icon-512.png icon-maskable-192.png icon-maskable-512.png icon-maskable-1024.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
+          for asset in tailwind.css icon.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
             echo "  - $asset"
             curl -fsSL -o /dev/null "$URL/$asset" \
               || { echo "::error::Asset $asset failed to load"; exit 1; }
