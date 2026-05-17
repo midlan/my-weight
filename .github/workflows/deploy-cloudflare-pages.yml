@@ -164,6 +164,35 @@ jobs:
           rsvg-convert -w 512 -h 512 /tmp/icon-maskable.svg -o public/icon-512.png
           rsvg-convert -w 192 -h 192 /tmp/icon-maskable.svg -o public/icon-192.png
 
+          # Anti-trim anchors: Chrome's WebAPK installer crops icons to
+          # the bounding box of opaque pixels before storing them in the
+          # install snapshot — confirmed on-device that the 156-px
+          # transparent safe-zone padding around our rounded rect was
+          # stripped at install time, leaving Samsung's launcher with
+          # an edge-to-edge icon to mask. To defeat the trim, drop a
+          # single opaque brand-green pixel at each of the four canvas
+          # edge midpoints. The bounding box of opaque content now
+          # spans the full canvas (rows 0 / h-1 and columns 0 / w-1
+          # each contain at least one non-transparent pixel), so
+          # there's no edge row/column to trim. The corners stay
+          # fully transparent — that's what makes Samsung's launcher
+          # classify the icon as "legacy" and apply the default white
+          # backdrop instead of the aggressive shape mask. Single
+          # pixels in a 192/512 canvas are smaller than one display
+          # pixel at typical launcher rendering, so visually invisible.
+          python3 - <<'PY'
+          from PIL import Image
+          GREEN = (29, 185, 84, 255)  # #1DB954, the icon's own brand color
+          for path in ('public/icon-192.png', 'public/icon-512.png'):
+              img = Image.open(path).convert('RGBA')
+              w, h = img.size
+              img.putpixel((w // 2, 0),     GREEN)
+              img.putpixel((0, h // 2),     GREEN)
+              img.putpixel((w - 1, h // 2), GREEN)
+              img.putpixel((w // 2, h - 1), GREEN)
+              img.save(path)
+          PY
+
       # Compile Tailwind utilities used in public/*.html into a single
       # minified stylesheet. This replaces the @tailwindcss/browser CDN
       # runtime which caused a flash of unstyled content on hard reload
