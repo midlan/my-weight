@@ -119,7 +119,7 @@ jobs:
             public/icon-512.png
             public/apple-touch-icon.png
             public/icon-maskable.svg
-          key: icons-${{ hashFiles('public/icon.svg') }}
+          key: icons-${{ hashFiles('public/icon.svg', '.github/workflows/deploy-cloudflare-pages.yml') }}
 
       - name: Generate icon files from icon.svg
         if: steps.icons-cache.outputs.cache-hit != 'true'
