@@ -145,13 +145,21 @@ jobs:
           # rectangle would need 196 per side; the rounded corners
           # buy back ~40 units.
           #
-          # A near-transparent (1% opacity) white rect is laid down
-          # first across the entire extended viewBox. Without it,
-          # Chrome's PWA install path trims any fully-transparent
-          # padding from a purpose:"any" icon — losing the safe-zone
-          # margin we just added. 1% opacity is invisible to the eye
-          # (8-bit alpha ≈ 2/255) but every pixel reads as non-zero
-          # alpha, so the trim heuristic keeps the padding intact.
+          # An OPAQUE white rect fills the entire extended viewBox.
+          # Two reasons it has to be opaque rather than transparent:
+          # (1) Chrome trims fully-transparent padding from "any" icons
+          #     (we want maskable, but this is the safer default for
+          #     other consumers reading the SVG).
+          # (2) Android Chrome's WebAPK splash screen renders the
+          #     maskable icon as-is, including its safe-zone padding.
+          #     With a white bleed, the padding merges into the
+          #     manifest's background_color (#ffffff) on the splash
+          #     screen — no visible empty space around the icon. On
+          #     the launcher (where the OS applies its mask shape),
+          #     the white bleed acts as a backdrop and the icon's
+          #     green rounded rect with rx=80 corners is preserved
+          #     inside the safe zone — matching the Messenger /
+          #     Chrome / Gmail "icon on white circle" look.
           cp public/icon.svg public/icon-maskable.svg
           perl -i -pe '
             $count += s/viewBox="0 0 512 512"/viewBox="-156 -156 824 824"/g;
@@ -160,7 +168,7 @@ jobs:
             }
           ' public/icon-maskable.svg
           perl -0777 -i -pe '
-            $count += s|</defs>|</defs>\n  <rect x="-156" y="-156" width="824" height="824" fill="white" opacity="0.01"/>|g;
+            $count += s|</defs>|</defs>\n  <rect x="-156" y="-156" width="824" height="824" fill="white"/>|g;
             END {
               die "expected 1 </defs> match in icon-maskable.svg, found $count\n" if $count != 1;
             }
