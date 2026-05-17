@@ -86,17 +86,14 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   176√2 + 80 ≈ 328.9) fits inside Android's 80%-diameter maskable
   safe circle. Padding is minimal: a plain rectangle would need
   196 per side, but the rounded corners buy ~40 units back. The
-  bleed area is filled with opaque white (matching the manifest's
-  `background_color: #ffffff`) so that on Android Chrome's
-  WebAPK splash — which renders the maskable icon with its full
-  safe-zone padding instead of using a separate "any" entry —
-  the bleed merges into the splash background and the icon
-  appears without an "ugly border" of empty space. On the
-  launcher (Samsung skins mask aggressively), the OS shape mask
-  is applied, the white bleed fills the mask, and the icon's
-  green rounded rect with rx=80 sits intact inside the safe
-  zone — the Messenger / Chrome / Gmail "icon on white circle"
-  look.
+  bleed is transparent (no background rect). Earlier iterations
+  injected an opaque-white or 1%-opacity rect to defeat Chrome's
+  alpha-trim heuristic on `purpose:"any"` icons, but those tests
+  predated the manifest src cache-bust and the phone kept showing
+  a stale WebAPK icon — inconclusive. The cache-bust is now in
+  place, so transparent padding can be retested cleanly; if
+  Chrome trims after all, the next iteration reintroduces a
+  bleed fill.
 - `functions/_middleware.js` — Cloudflare Pages edge middleware
   that runs before static assets are served. Today's only job is
   301-redirecting the bare CF Pages aliases (`my-weight.pages.dev`,
