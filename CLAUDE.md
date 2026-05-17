@@ -65,12 +65,18 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   Actions workflow that runs `wrangler pages deploy public` on
   every push to `main`. Requires repo secrets
   `CLOUDFLARE_API_TOKEN` (with Pages › Edit) and
-  `CLOUDFLARE_ACCOUNT_ID`. Also generates the icon raster set
+  `CLOUDFLARE_ACCOUNT_ID`. Also generates the icon asset set
   (`favicon.ico`, `icon-192.png`, `icon-512.png`,
-  `apple-touch-icon.png`) from `public/icon.svg` before deploy;
-  the step is cached on the hash of `icon.svg`, so it only
-  re-runs when the SVG source changes. All four generated files
-  are gitignored.
+  `apple-touch-icon.png`, `icon-maskable.svg`) from
+  `public/icon.svg` before deploy; the step is cached on the
+  hash of `icon.svg`, so it only re-runs when the SVG source
+  changes. All generated files are gitignored. `icon-maskable.svg`
+  is the same SVG re-emitted with `viewBox="-156 -156 824 824"`
+  — 156 px of transparent padding on each side so the rounded
+  square (side 512, corner radius 80, circumscribed-circle radius
+  176√2 + 80 ≈ 328.9) fits inside Android's 80%-diameter maskable
+  safe circle. Padding is minimal: a plain rectangle would need
+  196 per side, but the rounded corners buy ~40 units back.
 - `functions/_middleware.js` — Cloudflare Pages edge middleware
   that runs before static assets are served. Today's only job is
   301-redirecting the bare CF Pages aliases (`my-weight.pages.dev`,

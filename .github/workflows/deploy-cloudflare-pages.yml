@@ -102,11 +102,13 @@ jobs:
       # public/ directly or assemble a separate dist/ and point the
       # deploy command at it.
 
-      # Every raster derived from public/icon.svg is generated here:
+      # Every asset derived from public/icon.svg is generated here:
       # the legacy /favicon.ico, the PWA manifest icons (192 / 512),
-      # and the iOS apple-touch-icon (180). Cache key is the hash of
-      # icon.svg, so the regen only runs when the source SVG actually
-      # changes. All four files are gitignored build artifacts.
+      # the iOS apple-touch-icon (180), and icon-maskable.svg (the
+      # same SVG re-emitted with an extended viewBox so it fits
+      # Android's 80%-diameter maskable safe circle). Cache key is
+      # the hash of icon.svg, so the regen only runs when the source
+      # SVG actually changes. All generated files are gitignored.
       - name: Cache generated icon files
         id: icons-cache
         uses: actions/cache@v4
@@ -116,6 +118,7 @@ jobs:
             public/icon-192.png
             public/icon-512.png
             public/apple-touch-icon.png
+            public/icon-maskable.svg
           key: icons-${{ hashFiles('public/icon.svg') }}
 
       - name: Generate icon files from icon.svg
@@ -128,6 +131,28 @@ jobs:
           rsvg-convert -w 192 -h 192 public/icon.svg -o public/icon-192.png
           rsvg-convert -w 180 -h 180 public/icon.svg -o public/apple-touch-icon.png
           python3 -c "from PIL import Image; Image.open('public/icon-512.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
+
+          # icon-maskable.svg: a copy of icon.svg with the viewBox
+          # extended on all sides so the rounded-rect icon fits inside
+          # Android's maskable safe circle (diameter = 80% of canvas
+          # side). Math: the rounded square (side 512, corner radius
+          # 80) has a circumscribed-circle radius of 176*sqrt(2) + 80
+          # ≈ 328.9 — that's the distance from icon center to the
+          # midpoint of each corner arc, the farthest pixel. Solving
+          # 328.9 = 0.4 * new_side gives new_side = 822.25; we round
+          # up to 824 to leave ~0.6 unit antialiasing margin. Padding
+          # is therefore (824 - 512) / 2 = 156 per side. A plain
+          # rectangle would need 196 per side; the rounded corners
+          # buy back ~40 units. Bleed is transparent — the OS mask
+          # cuts its own shape and the icon's own rounded corners
+          # remain the visible silhouette inside it.
+          cp public/icon.svg public/icon-maskable.svg
+          perl -i -pe '
+            $count += s/viewBox="0 0 512 512"/viewBox="-156 -156 824 824"/g;
+            END {
+              die "expected 1 viewBox match in icon-maskable.svg, found $count\n" if $count != 1;
+            }
+          ' public/icon-maskable.svg
 
       # Compile Tailwind utilities used in public/*.html into a single
       # minified stylesheet. This replaces the @tailwindcss/browser CDN
@@ -214,7 +239,7 @@ jobs:
           grep -qE '<svg[^>]+id="logo"' <<< "$html" \
             || { echo "::error::Inlined <svg ... id=\"logo\"> not found in deployed HTML"; exit 1; }
 
-          for asset in tailwind.css icon.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
+          for asset in tailwind.css icon.svg icon-maskable.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
             echo "  - $asset"
             curl -fsSL -o /dev/null "$URL/$asset" \
               || { echo "::error::Asset $asset failed to load"; exit 1; }
