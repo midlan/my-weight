@@ -79,14 +79,36 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   `apple-touch-icon.png`) from `public/icon.svg` before deploy;
   the step is cached on the hash of `icon.svg` plus the workflow
   file, so it re-runs when the source SVG or the generation logic
-  changes. All generated files are gitignored. The manifest ships
-  two of these PNGs (192, 512) with no `purpose` (defaulting to
-  `"any"`) — same shape as Facebook's installable PWA. Earlier
-  attempts at a separate `purpose:"maskable"` icon with safe-zone
-  padding ran into Chrome's WebAPK installer trimming transparent
-  bleed on every variant we tried (SVG with extended viewBox,
-  pre-rasterized PNGs). Trusting the launcher to do something
-  reasonable with the plain icon is what FB does in production.
+  changes. All generated files are gitignored.
+
+  Two rasterization paths run in CI:
+  - **`favicon.ico`** and **`apple-touch-icon.png`** are rendered
+    from `icon.svg` directly (no padding). Favicon needs to fill
+    the browser tab; iOS adaptive icons handle their own padding.
+  - **`icon-192.png`** and **`icon-512.png`** (the manifest PWA
+    icons, no `purpose` = defaults to `"any"`) are rendered from
+    a padded variant: `icon.svg` with its viewBox extended to
+    `-156 -156 824 824` (156 px of transparent margin per side).
+    The expanded canvas inscribes the rounded square (side 512,
+    corner radius 80) inside Android's 80%-diameter maskable
+    safe circle — minimum padding mathematically possible since
+    a plain rectangle would need 196 per side and the rounded
+    corners save ~40 units.
+
+    The reason for the padding is a Samsung One UI launcher
+    heuristic discovered by pixel-comparing our icon against
+    Facebook's PWA icon: One UI classifies icons by transparent-
+    corner area. Edge-to-edge sources (first opaque on diagonal
+    at 23/192 for our unpadded rounded rect) are treated as
+    adaptive-icon foregrounds and clipped to the launcher's mask
+    shape, eating the corners. Sources with substantial transparent
+    corner area (FB's near-circle has first opaque on diagonal at
+    75/192) are treated as legacy icons — placed centered on a
+    default white circle backdrop, with the icon's own shape
+    preserved. The 156-px padded variant gives our PNGs FB-like
+    geometry without changing the visible icon shape, so the
+    launcher applies the legacy backdrop and our rounded corners
+    survive.
 - `functions/_middleware.js` — Cloudflare Pages edge middleware
   that runs before static assets are served. Today's only job is
   301-redirecting the bare CF Pages aliases (`my-weight.pages.dev`,

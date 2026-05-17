@@ -126,32 +126,43 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends librsvg2-bin
           pip install --quiet Pillow
-          rsvg-convert -w 512 -h 512 public/icon.svg -o public/icon-512.png
-          rsvg-convert -w 192 -h 192 public/icon.svg -o public/icon-192.png
-          rsvg-convert -w 180 -h 180 public/icon.svg -o public/apple-touch-icon.png
-          python3 -c "from PIL import Image; Image.open('public/icon-512.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
 
-          # DIAGNOSTIC: crop the PWA PNGs (icon-192, icon-512) to an
-          # inscribed circle so they match Facebook's icon shape exactly.
-          # Hypothesis: Samsung's launcher classifies icons by how much
-          # corner area is transparent; FB's near-circle source gets a
-          # default white backdrop applied, while our mild-rounded-rect
-          # source gets aggressive masking that clips the corners.
-          # Applies AFTER favicon.ico is built so the in-browser favicon
-          # keeps the original rounded-rect shape; only the manifest
-          # PNGs become circles. The apple-touch-icon is also left
-          # untouched (iOS adaptive icons behave differently).
-          python3 - <<'PY'
-          from PIL import Image, ImageDraw, ImageChops
-          for path in ('public/icon-192.png', 'public/icon-512.png'):
-              img = Image.open(path).convert('RGBA')
-              w, h = img.size
-              mask = Image.new('L', (w, h), 0)
-              ImageDraw.Draw(mask).ellipse((0, 0, w - 1, h - 1), fill=255)
-              new_alpha = ImageChops.multiply(img.split()[3], mask)
-              img.putalpha(new_alpha)
-              img.save(path)
-          PY
+          # favicon.ico and apple-touch-icon.png are rasterized from
+          # icon.svg directly (no padding) — favicon needs to fill the
+          # browser tab, iOS adaptive icons handle their own padding.
+          rsvg-convert -w 180 -h 180 public/icon.svg -o public/apple-touch-icon.png
+          rsvg-convert -w 512 -h 512 public/icon.svg -o /tmp/icon-fav.png
+          python3 -c "from PIL import Image; Image.open('/tmp/icon-fav.png').save('public/favicon.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
+
+          # icon-192.png and icon-512.png (the PWA manifest icons) come
+          # from a padded variant: icon.svg with the viewBox extended on
+          # all sides to (-156, -156, 824, 824) so the rounded square
+          # (side 512, corner radius 80, circumscribed-circle radius
+          # 176√2 + 80 ≈ 328.9) inscribes inside Android's 80%-diameter
+          # maskable safe circle. Padding = 156 per side (the rounded
+          # corners save ~40 units vs a plain rectangle's 196).
+          #
+          # Why padding instead of edge-to-edge: today's on-device
+          # diagnostic confirmed Samsung One UI classifies icons by
+          # transparent-corner area. Facebook's PWA icon (near-circle,
+          # first opaque on diagonal at 75/192) triggers the launcher's
+          # "legacy icon" backdrop path — white circle behind the icon,
+          # the icon's own shape preserved. Our edge-to-edge rounded
+          # rect (first opaque on diagonal at 23/192) was classified as
+          # "adaptive foreground" and clipped to the mask shape. With
+          # 156 px of transparent margin all round, the rasterized PNGs
+          # land closer to FB's geometry and should land in the legacy
+          # backdrop path too — without changing the icon's visible
+          # rounded-rect shape.
+          cp public/icon.svg /tmp/icon-maskable.svg
+          perl -i -pe '
+            $count += s/viewBox="0 0 512 512"/viewBox="-156 -156 824 824"/g;
+            END {
+              die "expected 1 viewBox match in /tmp/icon-maskable.svg, found $count\n" if $count != 1;
+            }
+          ' /tmp/icon-maskable.svg
+          rsvg-convert -w 512 -h 512 /tmp/icon-maskable.svg -o public/icon-512.png
+          rsvg-convert -w 192 -h 192 /tmp/icon-maskable.svg -o public/icon-192.png
 
       # Compile Tailwind utilities used in public/*.html into a single
       # minified stylesheet. This replaces the @tailwindcss/browser CDN
