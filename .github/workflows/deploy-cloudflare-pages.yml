@@ -325,7 +325,7 @@ jobs:
           # Developer email placeholder must have been substituted in BOTH
           # index.html and privacy.html. We curl each file separately so a
           # left-over placeholder in either is caught.
-          for path in / privacy; do
+          for path in / /privacy; do
             page=$(curl -fsSL "$URL$path")
             if grep -q '__DEVELOPER_EMAIL__' <<< "$page"; then
               echo "::error::__DEVELOPER_EMAIL__ placeholder survived in deployed $path"
