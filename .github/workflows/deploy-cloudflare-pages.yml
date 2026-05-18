@@ -266,7 +266,10 @@ jobs:
             # substitution mangled the email and we must not ship.
             # GHA log-masking redacts the secret in any output, so the
             # error message can mention $f without leaking the value.
-            verbatim_count=$(grep -c -F "$DEVELOPER_EMAIL" "$f" || true)
+            # grep -o prints each match on its own line (grep -c counts
+            # matching LINES, not matches, which would miss the two
+            # placeholders we put on the same line in each anchor).
+            verbatim_count=$(grep -o -F "$DEVELOPER_EMAIL" "$f" | wc -l)
             if [ "$verbatim_count" != "2" ]; then
               echo "::error::developer-email substitution in $f produced $verbatim_count verbatim matches (expected 2) — value was mangled, not shipped"
               exit 1
