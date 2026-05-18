@@ -1,0 +1,14 @@
+# Cloudflare Pages reads this file at deploy time and emits these
+# headers on every response. Replaces the in-document <meta http-equiv>
+# CSP that used to live in public/index.html — Lighthouse / web.dev
+# consider a real CSP header strictly stronger than a meta-tag one
+# (a meta-tag CSP can be bypassed by anything that lands before the
+# <meta> tag is parsed; a header applies to every byte).
+#
+# Keep this CSP in lockstep with the script / connect / frame origins
+# the app actually uses. The same string used to live in index.html;
+# if you add a new origin (e.g. a new CDN, a new Google host), edit
+# this file, not the HTML.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://accounts.google.com/gsi https://accounts.google.com/gsi/client https://apis.google.com https://www.gstatic.com https://content.googleapis.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src https://accounts.google.com https://accounts.google.com/gsi https://content.googleapis.com; connect-src 'self' https://apis.google.com https://www.googleapis.com https://www.gstatic.com https://content.googleapis.com
+  Strict-Transport-Security: max-age=31536000

@@ -226,10 +226,20 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
 - Chart.js 4 + `chartjs-adapter-date-fns` for the weight chart, via
   `cdn.jsdelivr.net`.
 
-CSP allows `https://cdn.jsdelivr.net` (Chart.js) plus the Google
-auth/api hosts. Tailwind no longer needs jsdelivr at runtime, but the
-CSP entry stays because Chart.js still loads from there. If you add
-another origin, update the CSP `<meta>`.
+CSP lives in `public/_headers` as a real HTTP response header that
+Cloudflare Pages emits on every response (the file used to live as a
+`<meta http-equiv>` in `public/index.html`, but Lighthouse flagged
+meta-tag CSPs as weaker — a meta CSP only applies after the parser
+reaches the tag). The same file ships HSTS (`Strict-Transport-Security:
+max-age=31536000`). CSP allows `https://cdn.jsdelivr.net` (Chart.js)
+plus the Google auth/api hosts. Tailwind no longer needs jsdelivr at
+runtime, but the CSP entry stays because Chart.js still loads from
+there. If you add another origin, update `public/_headers` (and
+re-deploy — Cloudflare Pages only re-reads the file at deploy time).
+The post-deploy smoke test asserts both headers are actually present
+on the deployed root, so a `_headers` typo (Cloudflare silently
+ignores malformed lines) fails the build instead of slipping into
+prod unnoticed.
 
 ## Drive storage
 

@@ -263,9 +263,25 @@ jobs:
         run: |
           echo "Smoke-testing $URL"
           html=$(curl -fsSL "$URL/")
+          headers=$(curl -fsSI "$URL/")
+
+          # public/_headers must produce CSP + HSTS on every response.
+          # Cloudflare Pages silently ignores _headers on syntax errors,
+          # so without these asserts a typo could land in prod
+          # unnoticed.
+          grep -qiE '^content-security-policy:' <<< "$headers" \
+            || { echo "::error::Content-Security-Policy header missing — public/_headers not picked up?"; exit 1; }
+          grep -qiE '^strict-transport-security:' <<< "$headers" \
+            || { echo "::error::Strict-Transport-Security header missing — public/_headers not picked up?"; exit 1; }
+          if grep -qE '<meta[[:space:]]+http-equiv=\"Content-Security-Policy\"' <<< "$html"; then
+            echo "::error::CSP meta tag survived in HTML — should be HTTP-header-only now"
+            exit 1
+          fi
 
           grep -q '<title>Moje váha</title>' <<< "$html" \
             || { echo "::error::Missing or wrong <title> in deployed HTML"; exit 1; }
+          grep -qE '<meta[[:space:]]+name="description"' <<< "$html" \
+            || { echo "::error::<meta name=\"description\"> missing in deployed HTML"; exit 1; }
 
           if grep -qE '__BUILD_SHA__|__BUILD_DATE__' <<< "$html"; then
             echo "::error::Build-metadata placeholders survived in deployed HTML"
