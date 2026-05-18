@@ -1638,6 +1638,106 @@ test('deleteRecord shows a spinner in the trash slot while upload is in flight',
   await expect(page.locator('li[data-key="2026-05-13T07:00:00.000Z"]')).toHaveCount(0);
 });
 
+test('deleting one record keeps the other rows\' edit + delete buttons visible', async ({ page }) => {
+  // Regression: buildHistoryRow's action slot used to gate the
+  // edit + delete buttons behind `else if (!deletingKey)`. While a
+  // delete was in flight on row A, every other row's actions slot
+  // rendered empty — the buttons disappeared from the whole list
+  // until the delete completed. The fix is to drop the `!deletingKey`
+  // guard so other rows keep their normal buttons during a delete
+  // (with click handlers that bail if `deletingKey` is set, to keep
+  // concurrent actions out of trouble).
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: {
+      '2026-05-13T07:00:00.000Z': { weight: 72.5 },
+      '2026-05-14T07:00:00.000Z': { weight: 72.3 },
+    },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.accept());
+
+  // Hold the delete fetch open so we can inspect the in-flight state.
+  // 1500 ms is plenty for the synchronous isVisible() snapshots below.
+  await page.evaluate(() => { __mock.forceNextFetchDelay = 1500; });
+
+  const targetRow = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  const otherRow = page.locator('li[data-key="2026-05-14T07:00:00.000Z"]');
+
+  await targetRow.locator('button[title="Smazat"]').click();
+
+  // The deleting row swaps trash for a spinner — as before. This
+  // also acts as the synchronization point: once the spinner is
+  // visible, deletingKey is set and the render has run, so the
+  // bug (if present) is observable in the DOM right now.
+  await expect(targetRow.locator('button[title="Mažu..."]')).toBeVisible();
+
+  // Snapshot the OTHER row's buttons right now — isVisible() and
+  // count() do NOT auto-wait, so they reflect the DOM at this exact
+  // moment. With the bug present (action slot empty during a delete),
+  // these come back 0 / false.
+  expect(await otherRow.locator('button[title="Upravit"]').count()).toBe(1);
+  expect(await otherRow.locator('button[title="Smazat"]').count()).toBe(1);
+  expect(await otherRow.locator('button[title="Upravit"]').isVisible()).toBe(true);
+  expect(await otherRow.locator('button[title="Smazat"]').isVisible()).toBe(true);
+
+  // After the delete completes, the other row's buttons are still
+  // there (and the deleted row is gone).
+  await expect(targetRow).toHaveCount(0);
+  await expect(otherRow.locator('button[title="Upravit"]')).toBeVisible();
+  await expect(otherRow.locator('button[title="Smazat"]')).toBeVisible();
+});
+
+test('clicking edit on another row while a delete is in flight alerts and keeps the delete running', async ({ page }) => {
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2,
+    records: {
+      '2026-05-13T07:00:00.000Z': { weight: 72.5 },
+      '2026-05-14T07:00:00.000Z': { weight: 72.3 },
+    },
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  // First dialog is the delete confirm — accept it. Second dialog is
+  // the "delete in progress" alert from the edit handler — capture
+  // its message.
+  page.removeAllListeners('dialog');
+  let editAlertMessage = '';
+  page.on('dialog', async (d) => {
+    if (d.type() === 'alert') {
+      editAlertMessage = d.message();
+      await d.accept();
+    } else {
+      await d.accept();
+    }
+  });
+
+  await page.evaluate(() => { __mock.forceNextFetchDelay = 500; });
+
+  const targetRow = page.locator('li[data-key="2026-05-13T07:00:00.000Z"]');
+  const otherRow = page.locator('li[data-key="2026-05-14T07:00:00.000Z"]');
+
+  await targetRow.locator('button[title="Smazat"]').click();
+  await expect(targetRow.locator('button[title="Mažu..."]')).toBeVisible();
+
+  // Click edit on the other row while delete is in flight. The guard
+  // alerts and bails — edit mode should NOT engage.
+  await otherRow.locator('button[title="Upravit"]').click();
+  expect(editAlertMessage).toContain('Probíhá mazání');
+
+  // Confirm edit mode did not engage: the row still shows the
+  // weight value as static text, not as an <input>.
+  await expect(otherRow.locator('input[type="number"]')).toHaveCount(0);
+
+  // After the delete completes, the other row is unaffected.
+  await expect(targetRow).toHaveCount(0);
+  await expect(otherRow.locator('button[title="Upravit"]')).toBeVisible();
+});
+
 test('logout clears state and shows auth section', async ({ page }) => {
   await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
     version: 2,

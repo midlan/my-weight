@@ -2088,9 +2088,18 @@
           spinnerBtn.innerHTML = '<div class="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-red-600 dark:border-t-red-400 rounded-full animate-spin"></div>';
 
           actions.append(editBtn, spinnerBtn);
-        } else if (!deletingKey) {
+        } else {
+          // Non-deleting rows always show normal edit + delete buttons,
+          // regardless of whether another row is mid-delete — matches
+          // the edit-save flow (other rows keep their buttons during
+          // an in-flight save). The action handlers below guard against
+          // concurrent actions while a delete is running.
           const editBtn = iconButton(ICON_EDIT, 'Upravit', 'text-gray-500 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-950 hover:text-blue-600 dark:hover:text-blue-300');
           editBtn.addEventListener('click', () => {
+            if (deletingKey) {
+              alert('Probíhá mazání záznamu, počkejte prosím.');
+              return;
+            }
             if (editingKey && editingKey !== key) {
               if (editingRowHasChanges()) {
                 const origValue = records[editingKey];
@@ -2166,6 +2175,14 @@
     }
 
     async function deleteRecord(key) {
+      // Refuse a second delete while one is already in flight.
+      // Prevents `deletingKey` from being overwritten mid-await and
+      // matches the alert the edit-button guard fires for the same
+      // scenario.
+      if (deletingKey) {
+        alert('Probíhá mazání záznamu, počkejte prosím.');
+        return;
+      }
       const value = records[key];
       if (!value) return;
       const dt = new Date(key);
