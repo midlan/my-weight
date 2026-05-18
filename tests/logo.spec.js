@@ -101,7 +101,7 @@ test.describe('displayLogoWeight()', () => {
 
 test.describe('updateLogoFromLatest()', () => {
   test('with no records → displays the 72.5 placeholder', async ({ page }) => {
-    await page.evaluate(() => { records = {}; updateLogoFromLatest(); });
+    await page.evaluate(() => { records = {}; updateLogoFromLatest({ animate: false }); });
     expect(await lit(page)).toEqual([
       'seg-1-a', 'seg-1-b', 'seg-1-c',
       'seg-2-a', 'seg-2-b', 'seg-2-d', 'seg-2-e', 'seg-2-g',
@@ -117,7 +117,7 @@ test.describe('updateLogoFromLatest()', () => {
         '2026-05-13T07:00:00.000Z': { weight: 72.5 },   // newest
         '2024-06-15T07:00:00.000Z': { weight: 90 },     // oldest
       };
-      updateLogoFromLatest();
+      updateLogoFromLatest({ animate: false });
     });
     // 72.5: blank, "7", "2", ".", "5"
     expect(await lit(page)).toEqual([
@@ -131,7 +131,7 @@ test.describe('updateLogoFromLatest()', () => {
   test('clamps the newest record\'s weight at 199.9', async ({ page }) => {
     await page.evaluate(() => {
       records = { '2026-05-13T07:00:00.000Z': { weight: 250 } };
-      updateLogoFromLatest();
+      updateLogoFromLatest({ animate: false });
     });
     expect(await lit(page)).toEqual([
       'seg-0-b', 'seg-0-c',

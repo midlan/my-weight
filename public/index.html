@@ -563,6 +563,12 @@
         for (const s of DIGIT_SEGMENTS[d]) setLogoSegment(p, s, true);
       }
     }
+    // Instant paint: sets every segment for the rounded 0.1-kg display
+    // value and records it as the "current" value so animation knows
+    // where to start from next time. Used directly for the initial
+    // paint, as the per-frame mutator inside `animateLogoWeight`, and
+    // by tests that need a synchronous final state.
+    let logoCurrentValue = null;
     function displayLogoWeight(w) {
       if (!LOGO_AVAILABLE) return;
       const clamped = Math.min(Math.max(0, w), LOGO_MAX);
@@ -585,21 +591,70 @@
         setLogoDigit(3, dp);
         setLogoDecimal(2, true);
       }
+      logoCurrentValue = r;
     }
-    function updateLogoFromLatest() {
+    // Animates the display from logoCurrentValue to the rounded target,
+    // updating every animation frame. Eases out logarithmically:
+    //   f(t) = log(1 + 9t) / log(10), with t in [0, 1].
+    //   f(0)=0, f(0.5)≈0.74, f(0.9)≈0.96, f(1)=1.
+    // So the rate of change is ~10× higher at the start than at the
+    // end — digits flick by quickly at first, then settle gently into
+    // the final reading, mimicking a real scale's overshoot-then-relax.
+    // Cancels any in-flight animation when a new target arrives. Falls
+    // back to an instant paint when there's no previous value to
+    // animate from (first call after page load) or the target is
+    // already on screen at 0.1-kg precision.
+    let logoAnimRaf = null;
+    function animateLogoWeight(target) {
+      if (!LOGO_AVAILABLE) return;
+      if (logoAnimRaf !== null) {
+        cancelAnimationFrame(logoAnimRaf);
+        logoAnimRaf = null;
+      }
+      const clamped = Math.min(Math.max(0, target), LOGO_MAX);
+      const targetR = Math.round(clamped * 10) / 10;
+      if (logoCurrentValue === null || logoCurrentValue === targetR) {
+        displayLogoWeight(targetR);
+        return;
+      }
+      const startR = logoCurrentValue;
+      const delta = targetR - startR;
+      // Duration scales sub-linearly with the jump size so a 0.2 kg
+      // change isn't instantaneous and a 50 kg import doesn't drag
+      // on. ~500 ms for ±0.5, ~900 ms for ±2, capped near 1.4 s.
+      const duration = Math.min(
+        1400,
+        350 + Math.log10(1 + Math.abs(delta) * 4) * 600
+      );
+      const startTime = performance.now();
+      const K = 10;
+      const LN_K = Math.log(K);
+      function frame(now) {
+        const t = Math.min((now - startTime) / duration, 1);
+        const eased = Math.log(1 + (K - 1) * t) / LN_K;
+        displayLogoWeight(startR + delta * eased);
+        if (t < 1) {
+          logoAnimRaf = requestAnimationFrame(frame);
+        } else {
+          logoAnimRaf = null;
+          displayLogoWeight(targetR);
+        }
+      }
+      logoAnimRaf = requestAnimationFrame(frame);
+    }
+    function updateLogoFromLatest({ animate = true } = {}) {
       if (!LOGO_AVAILABLE) return;
       const valid = recordsAsList().filter(r =>
         r && typeof r.weight === 'number'
         && typeof r.datetime === 'string'
         && !Number.isNaN(new Date(r.datetime).getTime())
       );
-      if (valid.length === 0) {
-        displayLogoWeight(72.5);
-        return;
-      }
       // recordsAsList() (called inside `valid`) sorts ascending —
-      // last element is the newest.
-      displayLogoWeight(valid[valid.length - 1].weight);
+      // last element is the newest. Falls back to the 72.5 placeholder
+      // when there are no records (cold start, post-wipe, post-logout).
+      const target = valid.length === 0 ? 72.5 : valid[valid.length - 1].weight;
+      if (animate) animateLogoWeight(target);
+      else displayLogoWeight(target);
     }
     if (LOGO_AVAILABLE) {
       // Hand control of the SVG from the CSS default-on classes to
