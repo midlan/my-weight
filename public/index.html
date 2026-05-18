@@ -244,8 +244,8 @@
        from this element and writes it into the privacy modal's contact
        anchor — necessary because the decoder script does NOT run on DOM
        nodes inserted via fetch + DOMParser (it only scans the document
-       on its initial load). __DEVELOPER_EMAIL__ is substituted from the
-       DEVELOPER_EMAIL GitHub Actions secret at deploy time, so the
+       on its initial load). The placeholder below is substituted from
+       the DEVELOPER_EMAIL GitHub Actions secret at deploy time, so the
        address never appears in the public git history. -->
   <a id="dev-email-src" href="mailto:__DEVELOPER_EMAIL__" hidden>__DEVELOPER_EMAIL__</a>
 
@@ -375,8 +375,8 @@
           // the email still obfuscated and the decoder doesn't run on the
           // grafted nodes, so without this patch the modal would show
           // "[email protected]" instead of the real address. Skipped in
-          // local dev where the __DEVELOPER_EMAIL__ placeholder hasn't been
-          // substituted (the deploy step does that from a GH secret).
+          // local dev where the email placeholder hasn't been substituted
+          // (the deploy step does that from the DEVELOPER_EMAIL secret).
           const emailSrc = document.getElementById('dev-email-src');
           const decodedEmail = emailSrc && emailSrc.textContent.trim();
           if (decodedEmail && !decodedEmail.startsWith('__')) {
