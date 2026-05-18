@@ -70,6 +70,14 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
     with `id="privacy-content"` for the loader to extract;
     everything else (Tailwind shell, back link) is page-only
     chrome.
+  - `public/404.html` — Cloudflare Pages' custom not-found page.
+    Same Tailwind shell as privacy.html, Czech "stránka nenalezena"
+    copy, link back to `/`. Without this file Pages used to fall
+    back to serving index.html (200 OK) for any unmatched path,
+    so typos like `/foo` looked like the app loaded successfully.
+    The post-deploy smoke test fetches a random unknown path and
+    asserts the response is 404 — catches the day Cloudflare ever
+    re-enables SPA fallback on the project.
 - `.github/workflows/deploy-cloudflare-pages.yml` — GitHub
   Actions workflow that runs `wrangler pages deploy public` on
   every push to `main`. Requires repo secrets

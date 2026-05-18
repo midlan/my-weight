@@ -308,11 +308,25 @@ jobs:
           grep -qE '"src":[[:space:]]*"/[^"]+\?v=[a-f0-9]{8}"' <<< "$manifest" \
             || { echo "::error::manifest icon src missing the ?v=<hash> cache-bust"; exit 1; }
 
-          for asset in tailwind.css icon.svg icon-maskable.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html; do
+          for asset in tailwind.css icon.svg icon-maskable.svg favicon.ico icon-192.png icon-512.png apple-touch-icon.png manifest.webmanifest sw.js privacy.html 404.html; do
             echo "  - $asset"
             curl -fsSL -o /dev/null "$URL/$asset" \
               || { echo "::error::Asset $asset failed to load"; exit 1; }
           done
+
+          # Unknown paths must return 404 (and serve public/404.html),
+          # not 200 with index.html — Cloudflare Pages used to fall
+          # back to index.html for any unmatched route, which made
+          # every typo look like a "working" page and broke SEO for
+          # missing URLs. The 404.html in public/ flips that to a
+          # proper not-found response. -w "%{http_code}" gives the
+          # status without -f's HTTP-error short-circuit.
+          unknown_path="/this-path-does-not-exist-$(date +%s%N)"
+          unknown_status=$(curl -sS -o /dev/null -w "%{http_code}" "$URL$unknown_path")
+          if [ "$unknown_status" != "404" ]; then
+            echo "::error::Unknown path returned $unknown_status instead of 404 — Pages is still falling back to index.html (SPA mode? missing 404.html?)"
+            exit 1
+          fi
           echo "Smoke test passed"
 
       # The curl smoke above only confirms the bytes serve. This step
