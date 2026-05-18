@@ -1593,7 +1593,7 @@ test('saveRecord shows "Ukládám..." in the submit button while upload is in fl
   await expect(submit).toHaveText(originalText);
 });
 
-test('saveEdit shows "Ukládám..." in the edit row while upload is in flight', async ({ page }) => {
+test('saveEdit swaps the save icon for an in-row spinner while upload is in flight', async ({ page }) => {
   await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
     version: 2,
     records: { '2026-05-13T07:00:00.000Z': { weight: 72.5 } },
@@ -1608,9 +1608,14 @@ test('saveEdit shows "Ukládám..." in the edit row while upload is in flight', 
   await page.evaluate(() => { __mock.forceNextFetchDelay = 500; });
   await row.locator('button[title="Uložit"]').click();
 
-  // The action area swaps the save / cancel buttons for an
-  // "Ukládám..." span while the upload runs.
-  await expect(row.getByText('Ukládám...')).toBeVisible();
+  // The save icon button is replaced by a spinner button labelled
+  // "Ukládám..." (same shape as the delete-trash spinner — keeps the
+  // row's layout stable, no text-width jump on save).
+  await expect(row.locator('button[aria-label="Ukládám..."]')).toBeVisible();
+  // Cancel stays visible but disabled, mirroring how delete-in-flight
+  // leaves the edit icon greyed out.
+  await expect(row.locator('button[title="Zrušit"]')).toBeVisible();
+  await expect(row.locator('button[title="Zrušit"]')).toBeDisabled();
 
   // Eventually the row returns to view mode (no inputs).
   await expect(row.locator('input')).toHaveCount(0);

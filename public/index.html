@@ -2035,9 +2035,26 @@
           wInput.disabled = true;
           wDecrement.disabled = true;
           wIncrement.disabled = true;
-          actions = document.createElement('span');
-          actions.className = 'text-sm text-gray-500 dark:text-gray-400 px-2 shrink-0 whitespace-nowrap';
-          actions.textContent = 'Ukládám...';
+          // Save → in-row spinner button, same shape as the delete
+          // trash → spinner swap. Same outer dimensions as the save
+          // icon button, so the row's layout doesn't shift between
+          // edit-mode and saving-mode (the previous "Ukládám..." text
+          // span was wider than two icon buttons and the row jumped).
+          const spinnerBtn = document.createElement('button');
+          spinnerBtn.type = 'button';
+          spinnerBtn.disabled = true;
+          spinnerBtn.title = 'Ukládám...';
+          spinnerBtn.setAttribute('aria-label', 'Ukládám...');
+          spinnerBtn.className = 'p-2 rounded text-green-600';
+          spinnerBtn.innerHTML = '<div class="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-green-600 dark:border-t-green-400 rounded-full animate-spin"></div>';
+          // Cancel button stays visible but disabled, mirroring how
+          // the delete-in-flight slot keeps the edit icon greyed out.
+          const cancelBtn = iconButton(ICON_CANCEL, 'Zrušit', 'text-gray-500 dark:text-gray-300');
+          cancelBtn.disabled = true;
+          cancelBtn.classList.add('opacity-50');
+          actions = document.createElement('div');
+          actions.className = 'flex gap-1 shrink-0 -my-1.5 -mr-2';
+          actions.append(spinnerBtn, cancelBtn);
         } else {
           const saveBtn = iconButton(ICON_CHECK, 'Uložit', 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950');
           saveBtn.addEventListener('click', () => saveEdit(key, dtInput.value, wInput.value, editNoteInput.value));
