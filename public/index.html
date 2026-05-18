@@ -907,23 +907,21 @@
 
     noteInput.addEventListener('focus', () => { noteInput.rows = 3; });
     noteInput.addEventListener('blur', () => {
-      // Defer the shrink to the next macrotask. If the blur was
-      // triggered by a click on another element (in particular the
-      // Save button two grid cells below), shrinking synchronously
-      // here would reflow the page between mousedown and mouseup —
-      // the button moves upward and mouseup lands on whatever sits
-      // at the old cursor position. The browser then never fires a
-      // click on the button and the form doesn't submit. setTimeout
-      // runs after the click event has been dispatched, so the
-      // shrink can still happen but no longer eats the click. The
-      // activeElement re-check covers the case where the user
-      // refocused the note before this task ran.
-      setTimeout(() => {
-        if (document.activeElement !== noteInput && noteInput.value.trim() === '') {
-          noteInput.rows = 1;
-        }
-      }, 0);
+      if (noteInput.value.trim() === '') noteInput.rows = 1;
     });
+    // Stop the submit button from stealing focus on mousedown. With
+    // the note focused (rows=3), letting the focus shift to Save
+    // would fire blur on the note → the shrink reflows the page
+    // between mousedown and mouseup, the button moves upward, and
+    // mouseup lands on whatever is now at the original cursor
+    // position. The browser then never fires a click on the button
+    // and the form doesn't submit. preventDefault on mousedown
+    // suppresses the focus change but leaves the click event alone,
+    // so the form still submits. This is reliable across browsers
+    // (a prior setTimeout-based fix worked in chromium but failed in
+    // webkit / firefox where setTimeout(0) can fire before the
+    // synthesized click).
+    submitBtn.addEventListener('mousedown', (e) => e.preventDefault());
 
     function toDateInputValue(d) {
       const pad = (n) => String(n).padStart(2, '0');
@@ -1566,6 +1564,13 @@
         renderRecords();
         renderChart();
         noteInput.value = '';
+        // Pull focus off the note so the blur handler shrinks it back
+        // from rows=3 to rows=1. Without this, a save triggered via
+        // the mousedown-preventDefault path leaves the note focused
+        // (intentionally — that's how the click survives the layout
+        // shift) and the textarea would stay expanded after each
+        // save.
+        noteInput.blur();
         if (!nowMode) {
           datetimeInput.value = toLocalInputValue(new Date(entry.datetime));
         }
