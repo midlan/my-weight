@@ -76,36 +76,37 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
   `CLOUDFLARE_API_TOKEN` (with Pages › Edit) and
   `CLOUDFLARE_ACCOUNT_ID`. Also generates the icon asset set
   (`favicon.ico`, `icon-192.png`, `icon-512.png`,
-  `apple-touch-icon.png`, `icon-maskable.svg`,
-  `icon-maskable-192.png`, `icon-maskable-512.png`) from
+  `apple-touch-icon.png`, `icon-maskable.svg`) from
   `public/icon.svg` before deploy; the step is cached on the
   hash of `icon.svg` plus the workflow file, so it re-runs when
   the source SVG or the generation logic changes. All generated
   files are gitignored.
 
-  Two icon variants:
-  - **Raw** (`favicon.ico`, `icon-192.png`, `icon-512.png`,
-    `apple-touch-icon.png`) — rasterized directly from `icon.svg`,
-    no padding, edge-to-edge rounded rect. Used by the HTML
-    `<link rel="icon">` tags and the iOS apple-touch-icon. The
-    favicon and apple-touch-icon stay clean (fill the tab /
-    iOS slot).
-  - **Padded maskable** (`icon-maskable.svg`,
-    `icon-maskable-192.png`, `icon-maskable-512.png`) — rendered
-    from `icon-maskable.svg`, which is `icon.svg` with the
-    viewBox extended to `-156 -156 824 824`. 156 px of transparent
-    margin inscribes the rounded square (side 512, corner radius
-    80, circumscribed-circle radius 176√2 + 80 ≈ 328.9) inside
-    Android's 80%-diameter maskable safe circle. A plain rectangle
-    would need 196 per side; the rounded corners save ~40 units.
-    All three are referenced in the PWA manifest with
-    `purpose: "maskable"` — Chrome respects the safe-zone padding
-    instead of trimming it (which it does for `purpose: "any"`),
-    Samsung's launcher applies its adaptive shape mask around the
-    safe zone leaving the rounded corners intact, and the PWA
-    splash screen renders the same padded source with visible
-    empty space around the icon (accepted trade-off — a clean
-    launcher icon at the cost of a slightly padded splash).
+  Two roles for the generated assets:
+  - **HTML head / iOS / browser tab** — `favicon.ico`,
+    `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` are
+    rasterized directly from `icon.svg` (no padding, edge-to-edge).
+    They feed the `<link rel="icon">` tags and the iOS
+    apple-touch-icon. Safari ignores manifest icons for PWA
+    install on iOS, so apple-touch-icon is what lands there.
+  - **PWA manifest** ships two SVG entries only — no PNG entries
+    in the manifest:
+    - `icon.svg` itself with `purpose: "any"` — edge-to-edge,
+      for splash and any other surface that doesn't apply a mask.
+    - `icon-maskable.svg` with `purpose: "maskable"` — the same
+      icon with viewBox extended to `-156 -156 824 824` (156 px
+      of margin per side, inscribing the rounded square + its
+      circumscribed circle of radius 176√2 + 80 ≈ 328.9 inside
+      Android's 80%-diameter maskable safe circle) AND an opaque
+      white rect filling that extended viewBox. The white fill is
+      deliberate: the W3C spec requires the user agent to
+      composite transparent maskable pixels onto a solid fill
+      "of the user agent's choice" — the choice isn't normative
+      and varies in practice. Pre-compositing onto white in CI
+      makes the result deterministic. On the launcher the OS
+      mask carves its preferred shape out of the white-filled
+      canvas with the green rounded rect in its center — same
+      look as Messenger / Chrome / Gmail.
 - `functions/_middleware.js` — Cloudflare Pages edge middleware
   that runs before static assets are served. Today's only job is
   301-redirecting the bare CF Pages aliases (`my-weight.pages.dev`,
