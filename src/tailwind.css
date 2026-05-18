@@ -9,6 +9,20 @@
    and applyTheme()); overrides the default media-query variant. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Align the `sm:` breakpoint with the floating-card max-width
+   (max-w-2xl = 42rem). Default Tailwind sm: is 40rem (640px), so
+   between 640px and 672px the card was already at its max width
+   (no side gap) but `sm:my-6 sm:rounded-lg sm:shadow-lg` were still
+   in effect — top margin and shadow without side margins. With sm:
+   at 42rem, the viewport touching the card edge AND the floating-
+   card layout switching to fullscreen happen at exactly the same
+   moment. Every `sm:` utility in the project (index.html +
+   privacy.html) exists for the card layout only, so nothing else
+   depends on the 640px value. */
+@theme {
+  --breakpoint-sm: 42rem;
+}
+
 button:not(:disabled) { cursor: pointer; }
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button {
