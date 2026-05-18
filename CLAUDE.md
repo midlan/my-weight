@@ -98,13 +98,20 @@ no backend, no build step. Open the file (or serve it statically) and it runs.
       of margin per side, inscribing the rounded square + its
       circumscribed circle of radius 176√2 + 80 ≈ 328.9 inside
       Android's 80%-diameter maskable safe circle) AND an opaque
-      white rect filling that extended viewBox. The white fill is
-      deliberate: the W3C spec requires the user agent to
-      composite transparent maskable pixels onto a solid fill
-      "of the user agent's choice" — the choice isn't normative
-      and varies in practice. Pre-compositing onto white in CI
-      makes the result deterministic. On the launcher the OS
-      mask carves its preferred shape out of the white-filled
+      white rect filling that extended viewBox. The opaque white
+      fill is intentional even though the W3C spec says the UA
+      "MUST composite transparent maskable pixels onto a solid
+      fill" for us: on-device testing on Samsung One UI + Chrome
+      showed the transparent safe-zone padding being actively
+      stripped at WebAPK install time, contradicting the spec but
+      shipping anyway, leaving the icon back at its edge-to-edge
+      bbox and the launcher clipping its rounded corners.
+      Pre-compositing onto opaque white in CI sidesteps the bug
+      (no transparency for Chrome to strip), and the spec's
+      "user agent's choice" composite color (not normative,
+      varies between Chromium pipelines — observed as both white
+      and black) doesn't enter the picture. On the launcher the
+      OS mask carves its preferred shape out of the white-filled
       canvas with the green rounded rect in its center — same
       look as Messenger / Chrome / Gmail.
 - `functions/_middleware.js` — Cloudflare Pages edge middleware

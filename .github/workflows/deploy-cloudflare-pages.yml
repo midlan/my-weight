@@ -148,17 +148,23 @@ jobs:
           #     corners save ~40 units).
           # (2) An opaque white rect filling the full extended viewBox,
           #     inserted just after </defs> so it paints behind everything.
-          #     Per the W3C App Manifest spec § Icon masks, the user
-          #     agent MUST composite transparent maskable pixels onto a
-          #     solid fill "of the user agent's choice" — that color is
-          #     not specified by the manifest and varies in practice
-          #     (Chromium has shipped both white and black depending on
-          #     pipeline). Pre-compositing onto white in CI makes the
-          #     result deterministic regardless of the UA's choice.
-          #     On the launcher the OS mask cuts whatever shape it
-          #     wants out of a white-filled square with the green
-          #     rounded rect in its center — same look as
-          #     Messenger / Chrome / Gmail.
+          #     WHY OPAQUE (and not transparent — even though the
+          #     W3C App Manifest spec § Icon masks says the UA MUST
+          #     composite transparent maskable pixels onto a solid
+          #     fill): on-device testing with Samsung One UI + Chrome
+          #     showed the transparent safe-zone padding being
+          #     actively STRIPPED at WebAPK install time, leaving the
+          #     icon back at its edge-to-edge bbox and the launcher
+          #     clipping the rounded corners. That contradicts the
+          #     spec, but it's what ships. Pre-compositing onto
+          #     opaque white in CI sidesteps the bug: there's no
+          #     transparency for Chrome to strip, and the spec's
+          #     "user agent's choice" composite color (not normative,
+          #     observed as white in some Chromium pipelines and
+          #     black in others) doesn't enter the picture. On the
+          #     launcher the OS mask carves its preferred shape out
+          #     of a white square with the green rounded rect in its
+          #     center — same look as Messenger / Chrome / Gmail.
           cp public/icon.svg public/icon-maskable.svg
           perl -i -pe '
             $count += s/viewBox="0 0 512 512"/viewBox="-156 -156 824 824"/g;
