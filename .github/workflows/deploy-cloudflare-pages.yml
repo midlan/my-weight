@@ -222,6 +222,35 @@ jobs:
             }
           ' index.html
 
+      # Substitute the developer contact email from a repo secret so the
+      # plaintext address never appears in public git history. Source HTML
+      # carries the literal placeholder __DEVELOPER_EMAIL__ (in a hidden
+      # anchor in index.html and the visible contact line in privacy.html);
+      # we require exactly two substitutions per file (href + visible text)
+      # so a missing placeholder or accidental duplicate fails the build.
+      # At runtime Cloudflare's Email Address Obfuscation rewrites the
+      # mailto/email text and ships email-decode.min.js to decode it
+      # client-side; the hidden anchor in index.html plus a small bridge
+      # in loadPrivacyContent() keeps the privacy modal correct even
+      # though the decoder doesn't run on fetched-then-grafted DOM nodes.
+      - name: Inject developer email
+        working-directory: public
+        env:
+          DEVELOPER_EMAIL: ${{ secrets.DEVELOPER_EMAIL }}
+        run: |
+          if [ -z "$DEVELOPER_EMAIL" ]; then
+            echo "::error::DEVELOPER_EMAIL secret is empty or unset"
+            exit 1
+          fi
+          for f in index.html privacy.html; do
+            perl -i -pe '
+              $count += s/__DEVELOPER_EMAIL__/'"$DEVELOPER_EMAIL"'/g;
+              END {
+                die "expected 2 __DEVELOPER_EMAIL__ matches in '"$f"', found $count\n" if $count != 2;
+              }
+            ' "$f"
+          done
+
       # Cache-bust the maskable icon URL in the manifest. The hash is
       # derived from public/icon.svg and the workflow file itself —
       # exactly the same inputs as the icons-cache key, so the manifest
@@ -292,6 +321,17 @@ jobs:
             || { echo "::error::Build SHA not replaced with a hex value"; exit 1; }
           grep -qE "date: '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z'" <<< "$html" \
             || { echo "::error::Build date not replaced with an ISO timestamp"; exit 1; }
+
+          # Developer email placeholder must have been substituted in BOTH
+          # index.html and privacy.html. We curl each file separately so a
+          # left-over placeholder in either is caught.
+          for path in / privacy; do
+            page=$(curl -fsSL "$URL$path")
+            if grep -q '__DEVELOPER_EMAIL__' <<< "$page"; then
+              echo "::error::__DEVELOPER_EMAIL__ placeholder survived in deployed $path"
+              exit 1
+            fi
+          done
 
           if grep -qE '<img[[:space:]]+[^>]*data-inline-svg' <<< "$html"; then
             echo "::error::SVG inliner left an <img data-inline-svg> tag behind"

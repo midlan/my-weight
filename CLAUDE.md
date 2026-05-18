@@ -546,6 +546,34 @@ Key pieces in `public/index.html`:
   doesn't blink. Subsequent opens are instant from the cache. The
   consent line under the login button and the menu button both
   trigger the same `openPrivacy()` flow.
+- **Developer email** (`__DEVELOPER_EMAIL__`) is kept out of the public
+  git repo and substituted at deploy time from the `DEVELOPER_EMAIL`
+  GitHub Actions secret. The placeholder appears in two files,
+  exactly twice each (href + visible text): `public/index.html`
+  (a hidden `<a id="dev-email-src">` near the bottom of `<body>`)
+  and `public/privacy.html` (the `<a id="dev-email-link">` on the
+  contact line). The workflow's "Inject developer email" step
+  perl-substitutes both and dies if the per-file count isn't 2;
+  post-deploy smoke greps both served pages for the surviving
+  placeholder.
+
+  Cloudflare's Email Address Obfuscation (Scrape Shield) rewrites
+  the deployed `mailto:` + visible email into a `__cf_email__`
+  anchor with a `data-cfemail` hex blob (single-byte XOR with the
+  key prepended) and auto-injects `email-decode.min.js`, which
+  decodes them back on `DOMContentLoaded`. The standalone
+  `privacy.html` direct visit gets the decoder for free because
+  it's a full HTML response; the modal-fetch path doesn't, because
+  the decoder only scans the document once on initial load — it
+  ignores DOM nodes inserted via `fetch()` + `DOMParser`.
+  `loadPrivacyContent()` bridges that by reading the
+  Cloudflare-decoded `textContent` of `#dev-email-src` (which
+  *did* get decoded on the main page load) and writing it into
+  `#dev-email-link` in the grafted modal content. The check
+  `decodedEmail.startsWith('__')` skips the patch when the
+  placeholder hasn't been substituted (local serves), so dev
+  mode still works without the secret — the modal will just
+  show `__DEVELOPER_EMAIL__` literally, which is fine for testing.
 - **History list** is paginated (default 10; options
   10/25/50/100/250/500). The page-size selector and prev/next
   controls sit *above* the list. Sorted newest-first; jumps back
