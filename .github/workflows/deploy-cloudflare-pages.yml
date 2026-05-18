@@ -243,12 +243,34 @@ jobs:
             exit 1
           fi
           for f in index.html privacy.html; do
-            perl -i -pe '
-              $count += s/__DEVELOPER_EMAIL__/'"$DEVELOPER_EMAIL"'/g;
+            # Read the email from %ENV inside perl rather than splicing
+            # it into the script via shell expansion. perl's s/// treats
+            # the replacement as a double-quoted string, so an `@` in the
+            # interpolated literal would be parsed as an array variable
+            # (e.g. info@mojevaha.cz → "info.cz", since @mojevaha doesn't
+            # exist and interpolates to empty). $ENV{...} is data, not
+            # code, so all bytes survive verbatim.
+            FILE="$f" perl -i -pe '
+              $count += s/__DEVELOPER_EMAIL__/$ENV{DEVELOPER_EMAIL}/g;
               END {
-                die "expected 2 __DEVELOPER_EMAIL__ matches in '"$f"', found $count\n" if $count != 2;
+                die "expected 2 __DEVELOPER_EMAIL__ matches in $ENV{FILE}, found $count\n" if $count != 2;
               }
             ' "$f"
+            # Sanity-check the value landed verbatim. The perl count above
+            # tells us 2 placeholders were swapped, but says nothing about
+            # what they were swapped FOR — a previous version of this step
+            # used shell interpolation and silently produced "info.cz" out
+            # of "info@mojevaha.cz" (perl parsed @mojevaha as an empty
+            # array). grep -F -c counts literal-string occurrences of the
+            # actual secret value; anything other than 2 means the
+            # substitution mangled the email and we must not ship.
+            # GHA log-masking redacts the secret in any output, so the
+            # error message can mention $f without leaking the value.
+            verbatim_count=$(grep -c -F "$DEVELOPER_EMAIL" "$f" || true)
+            if [ "$verbatim_count" != "2" ]; then
+              echo "::error::developer-email substitution in $f produced $verbatim_count verbatim matches (expected 2) — value was mangled, not shipped"
+              exit 1
+            fi
           done
 
       # Cache-bust the maskable icon URL in the manifest. The hash is
