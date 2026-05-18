@@ -907,7 +907,22 @@
 
     noteInput.addEventListener('focus', () => { noteInput.rows = 3; });
     noteInput.addEventListener('blur', () => {
-      if (noteInput.value.trim() === '') noteInput.rows = 1;
+      // Defer the shrink to the next macrotask. If the blur was
+      // triggered by a click on another element (in particular the
+      // Save button two grid cells below), shrinking synchronously
+      // here would reflow the page between mousedown and mouseup —
+      // the button moves upward and mouseup lands on whatever sits
+      // at the old cursor position. The browser then never fires a
+      // click on the button and the form doesn't submit. setTimeout
+      // runs after the click event has been dispatched, so the
+      // shrink can still happen but no longer eats the click. The
+      // activeElement re-check covers the case where the user
+      // refocused the note before this task ran.
+      setTimeout(() => {
+        if (document.activeElement !== noteInput && noteInput.value.trim() === '') {
+          noteInput.rows = 1;
+        }
+      }, 0);
     });
 
     function toDateInputValue(d) {

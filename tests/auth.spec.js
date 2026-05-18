@@ -310,6 +310,34 @@ test('mid-session 401 → silent reauth recovers, save still succeeds', async ({
   expect(reauthed).toBe(true);
 });
 
+test('clicking Save with the note focused commits the record on a single click', async ({ page }) => {
+  // Regression: the note <textarea>'s blur handler used to shrink
+  // rows from 3 back to 1 synchronously. When the user focused the
+  // note (rows→3) and then clicked Save without typing, the blur
+  // fired between mousedown and mouseup — the page reflowed, the
+  // Save button moved upward, and mouseup landed on whatever element
+  // was at the old cursor position. The browser never fired a click
+  // on the button, so the form never submitted; the user just saw
+  // the note collapse and had to click Save a second time.
+  await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
+    version: 2, records: {},
+  })));
+  await page.locator('#login-btn').click();
+  await expect(page.locator('#app-section')).toBeVisible();
+
+  await page.locator('#weight').fill('70.5');
+
+  // Focusing the note should expand it from rows=1 to rows=3.
+  await page.locator('#note').click();
+  await expect(page.locator('#note')).toHaveAttribute('rows', '3');
+
+  // A single click on Save must commit the record. With the bug
+  // present, this assertion times out because the form never
+  // submitted on the first click.
+  await page.locator('#weight-form button[type=submit]').click();
+  await expect(page.locator('#history-list li').first()).toContainText('70,5 kg');
+});
+
 test('mid-session 401 + silent reauth fails → fatal 401, auth section shown', async ({ page }) => {
   await page.evaluate(() => __mock.addFile('weight_records.json', JSON.stringify({
     version: 2, records: {},
